@@ -1,0 +1,133 @@
+{
+  "description": "Secure Falcon MCP Server Configuration",
+  "version": "1.0.0",
+  
+  "security": {
+    "enable_rate_limiting": true,
+    "rate_limit_requests": 100,
+    "rate_limit_window": 60,
+    "enable_request_validation": true,
+    "enable_tool_security_scanning": true,
+    "allowed_origins": [
+      "http://localhost",
+      "http://127.0.0.1",
+      "https://yourdomain.com"
+    ],
+    "log_level": "INFO",
+    "block_dangerous_patterns": true,
+    "max_request_size": 1048576,
+    "max_nesting_depth": 20
+  },
+  
+  "falcon_api": {
+    "client_id": "${FALCON_CLIENT_ID}",
+    "client_secret": "${FALCON_CLIENT_SECRET}",
+    "base_url": "${FALCON_BASE_URL}",
+    "timeout": 30,
+    "max_retries": 3,
+    "verify_ssl": true
+  },
+  
+  "logging": {
+    "level": "INFO",
+    "security_log_level": "WARNING",
+    "log_file": "falcon_mcp_security.log",
+    "max_log_size": "10MB",
+    "backup_count": 5,
+    "log_format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  },
+  
+  "modules": {
+    "hosts": {
+      "enabled": true,
+      "max_results": 1000,
+      "timeout": 30,
+      "validate_input": true
+    },
+    "detections": {
+      "enabled": true,
+      "max_results": 1000,
+      "timeout": 30,
+      "validate_input": true
+    },
+    "incidents": {
+      "enabled": true,
+      "max_results": 500,
+      "timeout": 60,
+      "validate_input": true
+    },
+    "idp": {
+      "enabled": true,
+      "max_results": 500,
+      "timeout": 30,
+      "validate_input": true,
+      "enable_graphql_security": true,
+      "max_query_depth": 10,
+      "max_query_complexity": 1000
+    },
+    "intel": {
+      "enabled": true,
+      "max_results": 1000,
+      "timeout": 30,
+      "validate_input": true
+    },
+    "spotlight": {
+      "enabled": true,
+      "max_results": 1000,
+      "timeout": 30,
+      "validate_input": true
+    },
+    "cloud": {
+      "enabled": true,
+      "max_results": 1000,
+      "timeout": 30,
+      "validate_input": true
+    }
+  },
+  
+  "server": {
+    "host": "localhost",
+    "port": 8080,
+    "enable_cors": true,
+    "cors_origins": [
+      "http://localhost",
+      "http://127.0.0.1"
+    ],
+    "request_timeout": 120,
+    "max_concurrent_requests": 50
+  },
+  
+  "input_validation": {
+    "max_string_length": 255,
+    "max_array_length": 1000,
+    "enable_type_checking": true,
+    "sanitize_input": true,
+    "block_null_bytes": true,
+    "block_control_characters": true
+  },
+  
+  "tool_security": {
+    "scan_tool_descriptions": true,
+    "block_high_severity_threats": true,
+    "log_medium_threats": true,
+    "allow_with_warnings": true,
+    "scan_patterns": [
+      "ignore.*previous.*instruction",
+      "system.*you.*are",
+      "javascript:",
+      "<script",
+      "eval\\(",
+      "exec\\(",
+      "admin.*access"
+    ]
+  },
+  
+  "monitoring": {
+    "enable_metrics": true,
+    "metrics_port": 9090,
+    "health_check_endpoint": "/health",
+    "security_dashboard": true,
+    "alert_on_threats": true,
+    "alert_webhook": "${SECURITY_ALERT_WEBHOOK}"
+  }
+}

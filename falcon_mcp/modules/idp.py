@@ -7,6 +7,7 @@ Core use cases:
 1. Entity Lookup & Investigation
 """
 import json
+import re
 from datetime import datetime
 from typing import Dict, List, Optional, Any, Union
 
@@ -21,8 +22,128 @@ from falcon_mcp.modules.base import BaseModule
 logger = get_logger(__name__)
 
 
+class GraphQLQueryBuilder:
+    """Secure GraphQL query builder to prevent injection attacks."""
+
+    @staticmethod
+    def validate_graphql_identifier(identifier: str) -> str:
+        """Validate and sanitize GraphQL identifiers."""
+        if not isinstance(identifier, str):
+            raise ValueError("GraphQL identifier must be a string")
+
+        # Only allow alphanumeric characters, underscores, and hyphens
+        if not re.match(r'^[a-zA-Z0-9_-]+$', identifier):
+            raise ValueError(f"Invalid GraphQL identifier: {identifier}")
+
+        return identifier
+
+    @staticmethod
+    def validate_graphql_enum(enum_value: str, allowed_values: List[str]) -> str:
+        """Validate GraphQL enum values against allowed list."""
+        if not isinstance(enum_value, str):
+            raise ValueError("GraphQL enum must be a string")
+
+        if enum_value not in allowed_values:
+            raise ValueError(f"Invalid enum value: {enum_value}. Allowed: {allowed_values}")
+
+        return enum_value
+
+    @staticmethod
+    def build_entity_query(
+        entity_ids: Optional[List[str]] = None,
+        primary_display_names: Optional[List[str]] = None,
+        secondary_display_names: Optional[List[str]] = None,
+        domains: Optional[List[str]] = None,
+        entity_types: Optional[List[str]] = None,
+        limit: int = 50
+    ) -> str:
+        """Build a secure entity query using parameterized approach."""
+
+        # Validate limit
+        if not isinstance(limit, int) or limit < 1 or limit > 200:
+            raise ValueError("Limit must be an integer between 1 and 200")
+
+        # Build filter arguments safely
+        filter_args = []
+
+        if entity_ids:
+            # Validate entity IDs
+            validated_ids = []
+            for entity_id in entity_ids:
+                if not isinstance(entity_id, str) or not re.match(r'^[a-zA-Z0-9_-]+$', entity_id):
+                    raise ValueError(f"Invalid entity ID format: {entity_id}")
+                validated_ids.append(entity_id)
+            filter_args.append(f'entityIds: {json.dumps(validated_ids)}')
+
+        if primary_display_names:
+            # Sanitize display names
+            sanitized_names = []
+            for name in primary_display_names:
+                sanitized_name = sanitize_input(str(name))
+                if len(sanitized_name) == 0:
+                    raise ValueError("Display name cannot be empty after sanitization")
+                sanitized_names.append(sanitized_name)
+            filter_args.append(f'primaryDisplayNames: {json.dumps(sanitized_names)}')
+
+        if secondary_display_names:
+            # Sanitize secondary display names (emails, etc.)
+            sanitized_names = []
+            for name in secondary_display_names:
+                sanitized_name = sanitize_input(str(name))
+                if len(sanitized_name) == 0:
+                    raise ValueError("Secondary display name cannot be empty after sanitization")
+                sanitized_names.append(sanitized_name)
+            filter_args.append(f'secondaryDisplayNames: {json.dumps(sanitized_names)}')
+
+        if domains:
+            # Validate domain format
+            sanitized_domains = []
+            for domain in domains:
+                # Basic domain validation
+                domain = sanitize_input(str(domain))
+                if not re.match(r'^[a-zA-Z0-9.-]+$', domain):
+                    raise ValueError(f"Invalid domain format: {domain}")
+                sanitized_domains.append(domain)
+            filter_args.append(f'domains: {json.dumps(sanitized_domains)}')
+
+        if entity_types:
+            # Validate entity types against allowed values
+            allowed_types = ['USER', 'ENDPOINT', 'SERVICE_ACCOUNT', 'APPLICATION']
+            validated_types = []
+            for entity_type in entity_types:
+                validated_type = GraphQLQueryBuilder.validate_graphql_enum(entity_type, allowed_types)
+                validated_types.append(validated_type)
+            # Don't use JSON dumps for enum arrays - they should be unquoted
+            types_str = '[' + ', '.join(validated_types) + ']'
+            filter_args.append(f'types: {types_str}')
+
+        # Build the query safely
+        filter_string = ', '.join(filter_args) if filter_args else ''
+
+        query = f"""
+        query {{
+            entities({filter_string}, first: {limit}) {{
+                nodes {{
+                    entityId
+                    primaryDisplayName
+                    secondaryDisplayName
+                    type
+                    riskScore
+                    riskScoreSeverity
+                }}
+            }}
+        }}
+        """
+
+        return query.strip()
+
+
 class IdpModule(BaseModule):
     """Module for accessing and managing CrowdStrike Falcon Identity Protection."""
+
+    def __init__(self, client):
+        super().__init__(client)
+        self.query_builder = GraphQLQueryBuilder()
 
     def register_tools(self, server: FastMCP) -> None:
         """Register IDP tools with the MCP server.
@@ -380,16 +501,46 @@ class IdpModule(BaseModule):
         event_types: Optional[List[str]],
         limit: int
     ) -> str:
-        """Build GraphQL query for entity timeline."""
+        """Build GraphQL query for entity timeline with enhanced security."""
+
+        # Validate entity ID
+        if not re.match(r'^[a-zA-Z0-9_-]+$', entity_id):
+            raise ValueError(f"Invalid entity ID format: {entity_id}")
+
+        # Validate limit
+        if not isinstance(limit, int) or limit < 1 or limit > 1000:
+            raise ValueError("Limit must be an integer between 1 and 1000")
+
+        # Build filters securely
         filters = [f'sourceEntityQuery: {{entityIds: ["{entity_id}"]}}']
 
-        if start_time and isinstance(start_time, str):
+        # Validate timestamps
+        if start_time:
+            if not isinstance(start_time, str):
+                raise ValueError("Start time must be a string")
+            # Basic ISO 8601 validation
+            if not re.match(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?$', start_time):
+                raise ValueError(f"Invalid start time format: {start_time}")
             filters.append(f'startTime: "{start_time}"')
-        if end_time and isinstance(end_time, str):
+
+        if end_time:
+            if not isinstance(end_time, str):
+                raise ValueError("End time must be a string")
+            if not re.match(r'^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z?$', end_time):
+                raise ValueError(f"Invalid end time format: {end_time}")
             filters.append(f'endTime: "{end_time}"')
-        if event_types and isinstance(event_types, list):
-            # Format event types as unquoted GraphQL enums
-            categories_str = "[" + ", ".join(event_types) + "]"
+
+        # Validate event types
+        if event_types:
+            allowed_event_types = ['ACTIVITY', 'NOTIFICATION', 'THREAT', 'ENTITY', 'AUDIT', 'POLICY', 'SYSTEM']
+            validated_types = []
+            for event_type in event_types:
+                if event_type not in allowed_event_types:
+                    raise ValueError(f"Invalid event type: {event_type}")
+                validated_types.append(event_type)
+
+            # Build enum array without quotes
+            categories_str = "[" + ", ".join(validated_types) + "]"
             filters.append(f'categories: {categories_str}')
 
         filter_string = ", ".join(filters)
@@ -679,15 +830,36 @@ class IdpModule(BaseModule):
     def _add_domain_filter(self, identifiers, query_fields, query_filters):
         domain_names = identifiers.get("domain_names")
         if domain_names and isinstance(domain_names, list):
-            sanitized_domains = [sanitize_input(domain) for domain in domain_names]
-            domains_json = json.dumps(sanitized_domains)
-            query_filters.append(f'domains: {domains_json}')
-            query_fields.extend(['primaryDisplayName', 'secondaryDisplayName'])
+            # Use secure query builder instead of direct string manipulation
+            try:
+                # Validate domains using the secure builder
+                sanitized_domains = []
+                for domain in domain_names:
+                    domain = sanitize_input(str(domain))
+                    if not re.match(r'^[a-zA-Z0-9.-]+$', domain):
+                        raise ValueError(f"Invalid domain format: {domain}")
+                    sanitized_domains.append(domain)
+
+                domains_json = json.dumps(sanitized_domains)
+                query_filters.append(f'domains: {domains_json}')
+                query_fields.extend(['primaryDisplayName', 'secondaryDisplayName'])
+            except ValueError as e:
+                logger.error(f"Domain validation failed: {e}")
+                raise ValueError(f"Invalid domain input: {e}")
         return domain_names
 
     def _add_ip_filter(self, has_user_criteria, ip_addresses, query_fields, query_filters):
         if ip_addresses and isinstance(ip_addresses, list) and not has_user_criteria:
-            sanitized_ips = [sanitize_input(ip) for ip in ip_addresses]
+            # Validate IP addresses
+            sanitized_ips = []
+            ip_pattern = re.compile(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$|^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$')
+
+            for ip in ip_addresses:
+                ip_str = str(ip).strip()
+                if not ip_pattern.match(ip_str):
+                    raise ValueError(f"Invalid IP address format: {ip_str}")
+                sanitized_ips.append(ip_str)
+
             ips_json = json.dumps(sanitized_ips)
             query_filters.append(f'primaryDisplayNames: {ips_json}')
             query_filters.append('types: [ENDPOINT]')
@@ -695,7 +867,16 @@ class IdpModule(BaseModule):
 
     def _add_email_filter(self, email_addresses, query_fields, query_filters):
         if email_addresses and isinstance(email_addresses, list):
-            sanitized_emails = [sanitize_input(email) for email in email_addresses]
+            # Validate email addresses
+            sanitized_emails = []
+            email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+            for email in email_addresses:
+                email_str = sanitize_input(str(email))
+                if not email_pattern.match(email_str):
+                    raise ValueError(f"Invalid email format: {email_str}")
+                sanitized_emails.append(email_str)
+
             emails_json = json.dumps(sanitized_emails)
             query_filters.append(f'secondaryDisplayNames: {emails_json}')
             query_filters.append('types: [USER]')
@@ -704,7 +885,17 @@ class IdpModule(BaseModule):
     def _add_entity_filters(self, identifiers, query_fields, query_filters):
         entity_names = identifiers.get("entity_names")
         if entity_names and isinstance(entity_names, list):
-            sanitized_names = [sanitize_input(name) for name in entity_names]
+            # Enhanced validation for entity names
+            sanitized_names = []
+            for name in entity_names:
+                sanitized_name = sanitize_input(str(name))
+                if len(sanitized_name) == 0:
+                    raise ValueError("Entity name cannot be empty after sanitization")
+                # Additional validation: no special GraphQL characters
+                if any(char in sanitized_name for char in ['{', '}', '(', ')', '[', ']']):
+                    raise ValueError(f"Entity name contains invalid characters: {sanitized_name}")
+                sanitized_names.append(sanitized_name)
+
             names_json = json.dumps(sanitized_names)
             query_filters.append(f'primaryDisplayNames: {names_json}')
             query_fields.append('primaryDisplayName')
