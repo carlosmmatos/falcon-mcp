@@ -25,6 +25,7 @@
   - [Identity Protection Module](#identity-protection-module)
   - [Incidents Module](#incidents-module)
   - [Intel Module](#intel-module)
+  - [Scheduled Reports Module](#scheduled-reports-module)
   - [Sensor Usage Module](#sensor-usage-module)
   - [Serverless Module](#serverless-module)
   - [Spotlight Module](#spotlight-module)
@@ -85,6 +86,7 @@ The Falcon MCP Server supports different modules, each requiring specific API sc
 | **Identity Protection** | `Identity Protection Entities:read`<br>`Identity Protection Timeline:read`<br>`Identity Protection Detections:read` <br> `Identity Protection Assessment:read` | Comprehensive entity investigation and identity protection analysis                  |
 | **Incidents**           | `Incidents:read`                                                                                                                                               | Analyze security incidents and coordinated activities                                |
 | **Intel**               | `Actors (Falcon Intelligence):read`<br>`Indicators (Falcon Intelligence):read`<br>`Reports (Falcon Intelligence):read`                                         | Research threat actors, IOCs, and intelligence reports                               |
+| **Scheduled Reports**   | `Scheduled Reports:read`                                                                                                                                                 | Search and manage scheduled reports and automated report executions                  |
 | **Sensor Usage**        | `Sensor Usage:read`                                                                                                                                            | Access and analyze sensor usage data                                                 |
 | **Serverless**          | `Falcon Container Image:read`                                                                                                                                  | Search for vulnerabilities in serverless functions across cloud service providers    |
 | **Spotlight**           | `Vulnerabilities:read`                                                                                                                                         | Manage and analyze vulnerability data and security assessments                       |
@@ -223,6 +225,20 @@ Provides tools for accessing and analyzing CrowdStrike Intelligence:
 - `falcon://intel/reports/fql-guide`: Comprehensive FQL documentation and examples for intelligence report searches
 
 **Use Cases**: Threat intelligence research, adversary tracking, IOC analysis, threat landscape assessment
+
+### Scheduled Reports Module
+
+**API Scopes Required**: `Scheduled Reports:read`
+
+Provides tools for accessing and managing CrowdStrike Falcon scheduled reports:
+
+- `falcon_search_scheduled_reports`: Search for scheduled reports and automated report executions in your environment
+
+**Resources**:
+
+- `falcon://scheduled-reports/search/fql-guide`: Comprehensive FQL documentation and examples for scheduled reports searches
+
+**Use Cases**: Report management, automated reporting monitoring, report execution tracking, compliance reporting, operational visibility
 
 ### Sensor Usage Module
 
