@@ -93,29 +93,35 @@ class ScheduledReportsModule(BaseModule):
 
                 Examples: 'created_on|desc', 'name|asc', 'next_execution_on|asc'
             """).strip(),
-            examples={"created_on|desc", "name|asc", "next_execution_on|asc"},
+            examples={
+                "created_on|desc",
+                "name|asc",
+                "next_execution_on|asc",
+            },
         ),
-    ) -> List[Dict[str, Any]]:
-        """Search for scheduled reports and searches in your CrowdStrike environment.
+    ) -> List[Dict[str, Any]] | Dict[str, Any]:
+        """Search and analyze scheduled reports to monitor automated reporting in your CrowdStrike environment.
 
-        This tool combines two API operations to provide comprehensive scheduled report information:
-        1. First searches for report IDs matching your filter criteria
-        2. Then retrieves detailed information for each matching report
+        Use this tool when you need to:
+        - Track the status and execution history of automated reports
+        - Monitor failed or successful report generations
+        - Find reports by type, schedule, or execution status
+        - Analyze report configurations and schedules
+        - Investigate reporting issues or compliance requirements
 
         IMPORTANT: You must use the `falcon://scheduled-reports/search/fql-guide` resource
         when building the filter parameter. This resource contains comprehensive documentation
         for all available filter options and syntax.
-
-        Returns:
-            List of scheduled report details including metadata, schedules, and execution status
         """
         # Prepare parameters for the query operation
-        query_params = prepare_api_parameters({
-            "filter": filter,
-            "limit": limit,
-            "offset": offset,
-            "sort": sort,
-        })
+        query_params = prepare_api_parameters(
+            {
+                "filter": filter,
+                "limit": limit,
+                "offset": offset,
+                "sort": sort,
+            }
+        )
 
         # First, get the list of scheduled report IDs
         query_operation = "scheduled_reports_query"
