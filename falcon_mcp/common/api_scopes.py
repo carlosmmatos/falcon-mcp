@@ -51,8 +51,8 @@ API_SCOPE_REQUIREMENTS = {
     "ReadContainerCount": ["Falcon Container Image:read"],
     "ReadCombinedVulnerabilities": ["Falcon Container Image:read"],
     # CSPM Assets operations
-    "cloud_security_assets_queries": ["Cloud Security API Assets:Read"],
-    "cloud_security_assets_entities_get": ["Cloud Security API Assets:Read"],
+    "cloud_security_assets_queries": ["Cloud Security API Assets:read"],
+    "cloud_security_assets_entities_get": ["Cloud Security API Assets:read"],
     # Identity Protection operations
     "api_preempt_proxy_post_graphql": [
         "Identity Protection Entities:read",
