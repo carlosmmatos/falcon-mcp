@@ -68,6 +68,23 @@ TOOL_EXAMPLES: dict[str, list[str]] = {
     "falcon_search_cspm_assets": [
         "Find all AWS EC2 instances in my cloud inventory",
     ],
+    "falcon_search_iom_findings": [
+        "Show me critical open CSPM misconfiguration findings in AWS",
+        "Find IOM findings for S3 buckets with public access",
+        "What CSPM IOM findings are suppressed as accepted risk?",
+    ],
+    "falcon_search_cspm_suppression_rules": [
+        "List all CSPM IOM suppression rules and their reasons",
+        "Show me which CSPM findings are being suppressed and why",
+    ],
+    "falcon_create_cspm_suppression_rule": [
+        "Create a CSPM suppression rule for the S3 encryption finding in the dev account as accepted risk",
+        "Suppress the IAM password policy IOM finding as a false positive, expiring in 30 days",
+    ],
+    "falcon_delete_cspm_suppression_rules": [
+        "Delete CSPM suppression rule abc-123",
+        "Remove the CSPM IOM suppression rule for the S3 public access finding",
+    ],
     # Custom IOA
     "falcon_search_ioa_rule_groups": [
         "Find enabled Windows Custom IOA rule groups",
