@@ -150,18 +150,21 @@ class FalconMCPServer:
             self.falcon_check_connectivity,
             name="falcon_check_connectivity",
             annotations=READ_ONLY_ANNOTATIONS,
+            structured_output=False,
         )
 
         self.server.add_tool(
             self.list_enabled_modules,
             name="falcon_list_enabled_modules",
             annotations=READ_ONLY_ANNOTATIONS,
+            structured_output=False,
         )
 
         self.server.add_tool(
             self.list_modules,
             name="falcon_list_modules",
             annotations=READ_ONLY_ANNOTATIONS,
+            structured_output=False,
         )
 
         tool_count = 3  # the tools added above

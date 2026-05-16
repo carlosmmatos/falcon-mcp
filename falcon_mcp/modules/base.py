@@ -71,7 +71,12 @@ class BaseModule(ABC):
             annotations: MCP tool annotations. Defaults to READ_ONLY_ANNOTATIONS.
         """
         prefixed_name = f"falcon_{name}"
-        server.add_tool(method, name=prefixed_name, annotations=annotations or READ_ONLY_ANNOTATIONS)
+        server.add_tool(
+            method,
+            name=prefixed_name,
+            annotations=annotations or READ_ONLY_ANNOTATIONS,
+            structured_output=False,
+        )
         self.tools.append(prefixed_name)
         logger.debug("Added tool: %s", prefixed_name)
 
