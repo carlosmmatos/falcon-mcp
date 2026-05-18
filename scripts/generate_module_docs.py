@@ -29,6 +29,10 @@ OUTPUT_DIR = PROJECT_ROOT / "docs-site" / "src" / "content" / "docs" / "modules"
 # Titles and descriptions are auto-derived from module docstrings.
 # Add entries here when you need a custom title, slug, or description.
 MODULE_METADATA: dict[str, dict[str, Any]] = {
+    "cases": {
+        "title": "Case Management",
+        "slug": "cases",
+    },
     "cloud": {
         "title": "Cloud Security",
     },
@@ -54,6 +58,35 @@ MODULE_METADATA: dict[str, dict[str, Any]] = {
 
 # Natural language prompt examples for each tool, shown in generated docs
 TOOL_EXAMPLES: dict[str, list[str]] = {
+    # Cases
+    "falcon_search_cases": [
+        "Show me any open cases with high severity or above",
+        "What cases have been created in the last 24 hours?",
+    ],
+    "falcon_get_cases": [
+        "Pull up the full details on that case",
+    ],
+    "falcon_create_case": [
+        "Create a critical case called 'Suspicious lateral movement from WORKSTATION-42'",
+        "Open a high-severity case for the credential theft alerts and attach them as evidence",
+    ],
+    "falcon_update_case": [
+        "Set that case to in_progress and assign it to the analyst",
+        "Close the case — investigation is complete",
+    ],
+    "falcon_add_case_alert_evidence": [
+        "Attach these detection alerts to the case",
+    ],
+    "falcon_add_case_event_evidence": [
+        "Add these NGSIEM event IDs to the case as evidence",
+    ],
+    "falcon_manage_case_tags": [
+        "Tag that case with 'ransomware' and 'escalated'",
+        "Remove the 'escalated' tag from that case",
+    ],
+    "falcon_list_case_templates": [
+        "What case templates are available?",
+    ],
     # Cloud
     "falcon_search_kubernetes_containers": [
         "Find all containers running in AWS clusters",
