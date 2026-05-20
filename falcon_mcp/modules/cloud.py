@@ -223,7 +223,7 @@ class CloudModule(BaseModule):
 
         Use this for aggregate counts without returning full container details. Consult
         falcon://cloud/kubernetes-containers/fql-guide before constructing filter
-        expressions. Returns the count as a single-element list.
+        expressions. Returns the matching container count as an integer.
         """
 
         # Prepare parameters
@@ -240,12 +240,16 @@ class CloudModule(BaseModule):
         response = self.client.command(operation, parameters=params)
 
         # Handle the response
-        return handle_api_response(
+        result = handle_api_response(
             response,
             operation=operation,
-            error_message="Failed to perform operation",
-            default_result=[],
+            error_message="Failed to count Kubernetes containers",
+            default_result=0,
         )
+
+        if isinstance(result, list) and result and isinstance(result[0], dict):
+            return result[0].get("count") or 0
+        return result
 
     def search_images_vulnerabilities(
         self,
