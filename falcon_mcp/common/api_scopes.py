@@ -130,6 +130,11 @@ API_SCOPE_REQUIREMENTS = {
     # Case Templates operations
     "queries_templates_get_v1": ["Case Templates:read"],
     "entities_templates_get_v1": ["Case Templates:read"],
+    # Correlation Rules operations
+    "combined_rules_get_v2": ["Correlation Rules:read"],
+    "entities_rules_post_v1": ["Correlation Rules:write"],
+    "entities_rules_patch_v1": ["Correlation Rules:write"],
+    "entities_rules_delete_v1": ["Correlation Rules:write"],
 }
 
 
