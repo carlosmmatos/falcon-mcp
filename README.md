@@ -184,10 +184,10 @@ See the [Docker Deployment guide](https://developer.crowdstrike.com/falcon-mcp/d
 ## Dynamic Mode
 
 Running many modules at once inflates the context window every AI client must hold. Dynamic mode
-replaces the full tool surface with three tools — `falcon_list_enabled_tools` to see every tool the
+replaces the full tool surface with four tools — `falcon_list_enabled_tools` to see every tool the
 server has available, `falcon_search_tools` to find candidate tools by keyword and then fetch the parameter
-schema for the one you pick, and `falcon_execute_tool` to run it — so agents only load the schemas
-they actually need.
+schema for the one you pick, `falcon_execute_tool` to run it, and `falcon_read_result` to inspect
+oversized saved results. Agents only load the schemas they need.
 
 ```bash
 falcon-mcp --dynamic
@@ -310,3 +310,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This is a community-driven, open source project. While it is not an official CrowdStrike product, it is actively maintained by CrowdStrike and supported in collaboration with the open source developer community.
 
 For more information, please see our [SUPPORT](SUPPORT.md) file.
+
+## Bounded responses
+
+Tool results default to a 25,000-byte serialized MCP budget. Use
+`response_options` for `summary`, `compact`, `full` (default), or field selection.
+Oversized results provide a session-bound handle for `falcon_read_result`, which
+retrieves bounded records and nested fields without another Falcon API call.
+See [response budgets](docs/usage/response-budgets.md) for examples and deployment
+requirements. Dynamic mode includes this retrieval tool in addition to its three
+discovery/execution tools.

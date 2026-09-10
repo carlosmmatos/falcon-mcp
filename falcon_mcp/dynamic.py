@@ -723,9 +723,11 @@ class DynamicMode:
         it again with tool_names to get the parameter schema and the mutation risk
         (read_only / destructive fields). Do not execute destructive tools without
         confirming the user's intent.
-        Results are returned in full — use each tool's own limit parameter to control
-        response volume. Empty result sets return a dict with results, pagination, and
-        hint keys rather than a bare empty list.
+        Set response_options on falcon_execute_tool (outside parameters) to request
+        summary, compact, full, fields, or a lower max_bytes budget. Oversized results
+        provide a session-bound handle for falcon_read_result; finish reading that
+        snapshot before following upstream pagination. Empty result sets return a
+        dict with results, pagination, and hint keys rather than a bare empty list.
         """
         entry = self.catalog.get(tool_name)
         if not entry:
