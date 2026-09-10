@@ -724,9 +724,9 @@ class DynamicMode:
         (read_only / destructive fields). Do not execute destructive tools without
         confirming the user's intent.
         Results pass through the same detail_level / include_fields / character-budget
-        shaping as a direct tool call (set those on the inner tool's parameters). Empty
-        result sets return a dict with results, pagination, and hint keys rather than a
-        bare empty list.
+        shaping as a direct tool call (set those on the inner tool's parameters). A bare
+        empty list is wrapped as {results: [], pagination, hint, response} so execute no
+        longer needs a second empty-result pass.
         """
         entry = self.catalog.get(tool_name)
         if not entry:

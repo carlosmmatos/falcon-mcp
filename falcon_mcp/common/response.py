@@ -34,9 +34,6 @@ DEFAULT_DETAIL_LEVEL = "compact"
 DETAIL_LEVELS = ("summary", "compact", "full")
 DetailLevel = Literal["summary", "compact", "full"]
 
-# Slack so inserting the final ``used`` / ``utf8_bytes`` figures cannot push a
-# packed payload back over the caller-visible budget.
-_BUDGET_SLACK = 96
 _MAX_OMITTED_IDS = 50
 _MAX_STRING_SUMMARY = 240
 _MAX_STRING_COMPACT = 800
@@ -145,6 +142,115 @@ BULKY_KEYS = frozenset(
 
 GUIDE_KEYS = frozenset({"fql_guide", "cql_guide"})
 
+# Search tools that have a real get-by-id (or equivalent) companion. Unmapped
+# search tools must not invent a name — hints fall back to tightening the query.
+DETAILS_TOOL_FOR: dict[str, str] = {
+    "falcon_search_detections": "falcon_get_detection_details",
+    "falcon_search_hosts": "falcon_get_host_details",
+    "falcon_search_cases": "falcon_get_cases",
+    "falcon_search_zta_assessments": "falcon_get_zta_assessments",
+    "falcon_search_workflow_executions": "falcon_get_workflow_execution_results",
+    "falcon_search_cloud_insights": "falcon_get_cloud_asset_insights",
+    "falcon_search_cloud_groups": "falcon_get_cloud_groups",
+    "falcon_search_guardian_agents": "falcon_get_guardian_agent",
+    "falcon_search_rtr_sessions": "falcon_get_rtr_session_details",
+    "falcon_search_ngsiem": "falcon_search_ngsiem",
+}
+
+# Tool name -> registered falcon:// guide URI. Unmapped tools omit the guide
+# without guessing a path.
+GUIDE_RESOURCE_FOR: dict[str, str] = {
+    "falcon_search_agentworks_agents": "falcon://agentworks/agents/fql-guide",
+    "falcon_search_agentworks_agent_versions": "falcon://agentworks/agent-versions/fql-guide",
+    "falcon_search_agentworks_spans": "falcon://agentworks/spans/fql-guide",
+    "falcon_search_cases": "falcon://cases/search/fql-guide",
+    "falcon_aggregate_case_slas": "falcon://cases/aggregates/fql-guide",
+    "falcon_aggregate_case_templates": "falcon://cases/aggregates/fql-guide",
+    "falcon_aggregate_case_access_tags": "falcon://cases/aggregates/fql-guide",
+    "falcon_aggregate_case_notification_groups": "falcon://cases/aggregates/fql-guide",
+    "falcon_aggregate_case_file_details": "falcon://cases/file-aggregates/fql-guide",
+    "falcon_search_cspm_assets": "falcon://cloud/cspm-assets/fql-guide",
+    "falcon_search_kubernetes_containers": "falcon://cloud/kubernetes-containers/fql-guide",
+    "falcon_search_images_vulnerabilities": "falcon://cloud/images-vulnerabilities/fql-guide",
+    "falcon_search_cloud_insights": "falcon://cloud/cloud-insights/fql-guide",
+    "falcon_search_iom_findings": "falcon://cloud/cspm-iom-findings/fql-guide",
+    "falcon_search_cloud_risks": "falcon://cloud/cloud-risks/fql-guide",
+    "falcon_search_correlation_rules": "falcon://correlation-rules/search/fql-guide",
+    "falcon_search_ioa_rule_groups": "falcon://custom-ioa/rule-groups/fql-guide",
+    "falcon_search_data_protection_classifications": (
+        "falcon://data-protection/classifications/fql-guide"
+    ),
+    "falcon_search_data_protection_policies": "falcon://data-protection/policies/fql-guide",
+    "falcon_search_data_protection_content_patterns": (
+        "falcon://data-protection/content-patterns/fql-guide"
+    ),
+    "falcon_search_detections": "falcon://detections/search/fql-guide",
+    "falcon_aggregate_detections": "falcon://detections/search/fql-guide",
+    "falcon_search_applications": "falcon://discover/applications/fql-guide",
+    "falcon_search_unmanaged_assets": "falcon://discover/hosts/fql-guide",
+    "falcon_search_managed_assets": "falcon://discover/managed-assets/fql-guide",
+    "falcon_search_exclusions": "falcon://exclusions/search/fql-guide",
+    "falcon_search_firewall_rules": "falcon://firewall/rules/fql-guide",
+    "falcon_search_firewall_rule_groups": "falcon://firewall/rules/fql-guide",
+    "falcon_search_firewall_policy_rules": "falcon://firewall/rules/fql-guide",
+    "falcon_search_workflow_definitions": "falcon://fusion/workflow-definitions/fql-guide",
+    "falcon_search_workflow_executions": "falcon://fusion/workflow-executions/fql-guide",
+    "falcon_search_host_groups": "falcon://host-groups/search/fql-guide",
+    "falcon_search_host_group_members": "falcon://host-groups/search/fql-guide",
+    "falcon_search_hosts": "falcon://hosts/search/fql-guide",
+    "falcon_search_actors": "falcon://intel/actors/fql-guide",
+    "falcon_search_indicators": "falcon://intel/indicators/fql-guide",
+    "falcon_search_reports": "falcon://intel/reports/fql-guide",
+    "falcon_search_iocs": "falcon://ioc/search/fql-guide",
+    "falcon_search_ngsiem": "falcon://ngsiem/search/cql-guide",
+    "falcon_search_policies": "falcon://policies/search/fql-guide",
+    "falcon_search_policy_members": "falcon://policies/search/fql-guide",
+    "falcon_search_quarantined_files": "falcon://quarantine/files/search/fql-guide",
+    "falcon_search_recon_notifications": "falcon://recon/notifications/search/fql-guide",
+    "falcon_search_recon_rules": "falcon://recon/rules/search/fql-guide",
+    "falcon_search_recon_exposed_data_records": (
+        "falcon://recon/exposed-data-records/search/fql-guide"
+    ),
+    "falcon_aggregate_recon_notifications": "falcon://recon/notifications/aggregate-guide",
+    "falcon_aggregate_recon_exposed_data_records": (
+        "falcon://recon/exposed-data-records/aggregate-guide"
+    ),
+    "falcon_preview_recon_rule": "falcon://recon/rules/preview-guide",
+    "falcon_search_rtr_sessions": "falcon://rtr/sessions/search/fql-guide",
+    "falcon_search_rtr_audit_sessions": "falcon://rtr/audit/sessions/search/fql-guide",
+    "falcon_aggregate_rtr_sessions": "falcon://rtr/sessions/aggregate-guide",
+    "falcon_search_scheduled_reports": "falcon://scheduled-reports/search/fql-guide",
+    "falcon_search_report_executions": "falcon://scheduled-reports/executions/search/fql-guide",
+    "falcon_search_sensor_usage": "falcon://sensor-usage/weekly/fql-guide",
+    "falcon_search_serverless_vulnerabilities": "falcon://serverless/vulnerabilities/fql-guide",
+    "falcon_search_shield_checks": "falcon://shield/search/query-guide",
+    "falcon_search_shield_alerts": "falcon://shield/search/query-guide",
+    "falcon_search_shield_users": "falcon://shield/search/query-guide",
+    "falcon_search_shield_devices": "falcon://shield/search/query-guide",
+    "falcon_search_shield_apps": "falcon://shield/search/query-guide",
+    "falcon_search_shield_data_shares": "falcon://shield/search/query-guide",
+    "falcon_search_vulnerabilities": "falcon://spotlight/vulnerabilities/fql-guide",
+}
+
+_PROTECTED_BODY_KEYS = frozenset(
+    {
+        "results",
+        "response",
+        "error",
+        "text",
+        "pagination",
+        "required_scopes",
+        "job",
+        "query_used",
+        "hint",
+    }
+)
+
+EMPTY_RESULT_HINT = (
+    "No records returned. Call falcon_search_tools with tool_names to review "
+    "the tool parameters if this is unexpected."
+)
+
 DETAIL_LEVEL_DESCRIPTION = (
     "Fields returned per record: 'summary' (identifiers and triage fields such as "
     "status, severity, hostname, timestamps), 'compact' (default; key operational "
@@ -194,15 +300,15 @@ def policy_from_sources(
 
     Precedence: explicit argument > ``FALCON_MCP_*`` environment variable > default.
     """
-    if char_budget is None:
-        raw_budget = os.environ.get("FALCON_MCP_RESPONSE_CHAR_BUDGET")
-        char_budget = int(raw_budget) if raw_budget else DEFAULT_CHAR_BUDGET
+    raw_budget: int | str | None = char_budget
+    if raw_budget is None:
+        raw_budget = os.environ.get("FALCON_MCP_RESPONSE_CHAR_BUDGET", DEFAULT_CHAR_BUDGET)
     if default_detail_level is None:
         default_detail_level = os.environ.get(
             "FALCON_MCP_DEFAULT_DETAIL_LEVEL", DEFAULT_DETAIL_LEVEL
         )
     return ResponsePolicy(
-        char_budget=_coerce_char_budget(char_budget),
+        char_budget=_coerce_char_budget(raw_budget),
         default_detail_level=_coerce_detail_level(default_detail_level),
     )
 
@@ -241,9 +347,7 @@ def project_entity(
     """Deterministically project an entity according to ``detail_level`` / fields."""
     level = _coerce_detail_level(detail_level)
     if isinstance(value, list):
-        return [
-            project_entity(item, level, include_fields, depth=depth + 1) for item in value
-        ]
+        return [project_entity(item, level, include_fields, depth=depth + 1) for item in value]
     if not isinstance(value, dict):
         if isinstance(value, str):
             return _bound_string(value, level)
@@ -253,8 +357,7 @@ def project_entity(
         allowed_fields = set(include_fields) | set(extract_record_ids(value))
         filtered = {key: val for key, val in value.items() if key in allowed_fields}
         return {
-            key: project_entity(val, level, None, depth=depth + 1)
-            for key, val in filtered.items()
+            key: project_entity(val, level, None, depth=depth + 1) for key, val in filtered.items()
         }
 
     if level == "full":
@@ -298,9 +401,7 @@ def shape_tool_result(
         detail_level if detail_level is not None else policy.default_detail_level
     )
     fields = _normalize_include_fields(include_fields)
-    budget = _coerce_char_budget(
-        char_budget if char_budget is not None else policy.char_budget
-    )
+    budget = _coerce_char_budget(char_budget if char_budget is not None else policy.char_budget)
 
     if isinstance(result, str):
         return _shape_string(result, tool_name=tool_name, level=level, budget=budget)
@@ -309,10 +410,16 @@ def shape_tool_result(
         return _shape_error(result, tool_name=tool_name, level=level, budget=budget)
 
     if isinstance(result, list):
+        extra: dict[str, Any] = {}
+        if not result:
+            extra = {
+                "pagination": {"total": 0, "next": None},
+                "hint": EMPTY_RESULT_HINT,
+            }
         projected = [project_entity(item, level, fields) for item in result]
         return _pack_records(
             projected,
-            extra={},
+            extra=extra,
             original_records=result,
             tool_name=tool_name,
             level=level,
@@ -335,7 +442,9 @@ def shape_tool_result(
                 budget=budget,
             )
         extra["results"] = project_entity(records, level, fields)
-        return _finalize_payload(extra, tool_name=tool_name, level=level, fields=fields, budget=budget)
+        return _finalize_payload(
+            extra, tool_name=tool_name, level=level, fields=fields, budget=budget
+        )
 
     if isinstance(result, dict):
         projected = project_entity(result, level, fields)
@@ -388,13 +497,13 @@ def with_response_controls(method: Callable[..., Any], tool_name: str) -> Callab
     var_keyword: list[inspect.Parameter] = []
     if parameters and parameters[-1].kind == inspect.Parameter.VAR_KEYWORD:
         var_keyword = [parameters.pop()]
-    new_signature = original_signature.replace(parameters=parameters + extra_parameters + var_keyword)
+    new_signature = original_signature.replace(
+        parameters=parameters + extra_parameters + var_keyword
+    )
 
     def _pop_controls(kwargs: dict[str, Any]) -> tuple[str, list[str] | None]:
         policy = get_response_policy()
-        detail_level = unwrap_field_default(
-            kwargs.pop("detail_level", policy.default_detail_level)
-        )
+        detail_level = unwrap_field_default(kwargs.pop("detail_level", policy.default_detail_level))
         include_fields = unwrap_field_default(kwargs.pop("include_fields", None))
         if not isinstance(detail_level, str):
             detail_level = policy.default_detail_level
@@ -441,24 +550,17 @@ def with_response_controls(method: Callable[..., Any], tool_name: str) -> Callab
     return wrapper
 
 
-def details_tool_for(tool_name: str) -> str:
-    """Best-effort get-by-id tool for retrieving omitted records."""
-    if tool_name == "falcon_search_ngsiem":
-        return "falcon_search_ngsiem"
+def details_tool_for(tool_name: str) -> str | None:
+    """Return the registered get-by-id tool for omitted records, if one exists.
+
+    Unmapped search tools return ``None`` rather than an invented name.
+    """
+    mapped = DETAILS_TOOL_FOR.get(tool_name)
+    if mapped is not None:
+        return mapped
     if "get_" in tool_name:
         return tool_name
-    if tool_name.startswith("falcon_search_"):
-        stem = tool_name[len("falcon_search_") :]
-        if stem.endswith("ies"):
-            singular = stem[:-3] + "y"
-        elif stem.endswith("ses"):
-            singular = stem[:-2]
-        elif stem.endswith("s"):
-            singular = stem[:-1]
-        else:
-            singular = stem
-        return f"falcon_get_{singular}_details"
-    return tool_name
+    return None
 
 
 def _coerce_detail_level(value: Any) -> str:
@@ -580,17 +682,11 @@ def _compact_value(value: Any) -> Any:
     return value
 
 
-def _guide_resource(tool_name: str, key: str) -> str:
+def guide_resource_for(tool_name: str, key: str) -> str | None:
+    """Return the registered guide URI for ``tool_name``, or ``None`` if unknown."""
     if key == "cql_guide":
         return "falcon://ngsiem/search/cql-guide"
-    if tool_name.startswith("falcon_search_"):
-        module = tool_name[len("falcon_search_") :]
-        return f"falcon://{module}/search/fql-guide"
-    if tool_name.startswith("falcon_"):
-        rest = tool_name[len("falcon_") :]
-        module = rest.split("_", 1)[0]
-        return f"falcon://{module}/search/fql-guide"
-    return "falcon://guides"
+    return GUIDE_RESOURCE_FOR.get(tool_name)
 
 
 def _omit_guides(payload: dict[str, Any], tool_name: str) -> dict[str, Any]:
@@ -598,13 +694,21 @@ def _omit_guides(payload: dict[str, Any], tool_name: str) -> dict[str, Any]:
     for key in GUIDE_KEYS:
         value = updated.get(key)
         if isinstance(value, str) and value:
-            updated[key] = {
+            resource = guide_resource_for(tool_name, key)
+            marker: dict[str, Any] = {
                 "_omitted": True,
                 "reason": "response_budget",
                 "kind": "guide",
-                "resource": _guide_resource(tool_name, key),
-                "hint": f"Read {_guide_resource(tool_name, key)} for the full guide.",
             }
+            if resource:
+                marker["resource"] = resource
+                marker["hint"] = f"Read {resource} for the full guide."
+            else:
+                marker["hint"] = (
+                    "Read this module's fql-guide resource; "
+                    "falcon_list_enabled_tools lists registered guides."
+                )
+            updated[key] = marker
     return updated
 
 
@@ -660,7 +764,7 @@ def _stub_record(record: Any) -> dict[str, Any]:
 def _largest_nested_key(record: dict[str, Any]) -> str | None:
     best_key: str | None = None
     best_size = -1
-    protected = set(extract_record_ids(record))
+    protected = set(extract_record_ids(record)) | _PROTECTED_BODY_KEYS
     for key, value in record.items():
         if key in protected or key.startswith("_") or _is_marker(value):
             continue
@@ -685,6 +789,281 @@ def _shrink_record(record: Any) -> Any:
     return current
 
 
+def _response_meta(
+    *,
+    level: str,
+    include_fields: list[str] | None,
+    omitted_count: int,
+    omitted_ids: list[Any],
+    ids_truncated: bool,
+    page_complete: bool,
+    hints: list[str],
+    budget: int,
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    meta: dict[str, Any] = {
+        "detail_level": level,
+        "include_fields": include_fields,
+        "field_projection": {
+            "applied": level != "full" or include_fields is not None,
+            "reason": (
+                "include_fields"
+                if include_fields is not None
+                else ("detail_level" if level != "full" else None)
+            ),
+        },
+        "page_complete": page_complete,
+        "omitted_records": {
+            "count": omitted_count,
+            "ids": omitted_ids,
+            "ids_truncated": ids_truncated,
+            "reason": "response_budget" if omitted_count else None,
+        },
+        "hints": hints,
+        "budget": {
+            "unit": "unicode_characters",
+            "limit": budget,
+            "used": 0,
+            "utf8_bytes": 0,
+        },
+    }
+    if extra:
+        meta.update(extra)
+    return meta
+
+
+def _copy_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    body = dict(payload)
+    meta = body.get("response")
+    if isinstance(meta, dict):
+        meta = dict(meta)
+        body["response"] = meta
+        if isinstance(meta.get("budget"), dict):
+            meta["budget"] = dict(meta["budget"])
+        omitted = meta.get("omitted_records")
+        if isinstance(omitted, dict):
+            omitted = dict(omitted)
+            meta["omitted_records"] = omitted
+            if isinstance(omitted.get("ids"), list):
+                omitted["ids"] = list(omitted["ids"])
+        if isinstance(meta.get("hints"), list):
+            meta["hints"] = list(meta["hints"])
+    return body
+
+
+def _stamp_budget(payload: dict[str, Any], budget: int) -> dict[str, Any]:
+    meta = payload.setdefault("response", {})
+    if not isinstance(meta, dict):
+        meta = {}
+        payload["response"] = meta
+    budget_meta = meta.setdefault("budget", {})
+    if not isinstance(budget_meta, dict):
+        budget_meta = {}
+        meta["budget"] = budget_meta
+    for _ in range(6):
+        text = serialize_mcp_text(payload)
+        budget_meta["unit"] = "unicode_characters"
+        budget_meta["limit"] = budget
+        budget_meta["used"] = len(text)
+        budget_meta["utf8_bytes"] = len(text.encode("utf-8"))
+        meta["budget"] = budget_meta
+        payload["response"] = meta
+        again = serialize_mcp_text(payload)
+        if len(again) == budget_meta["used"]:
+            break
+        budget_meta["used"] = len(again)
+        budget_meta["utf8_bytes"] = len(again.encode("utf-8"))
+    return payload
+
+
+def _truncate_string_field(payload: dict[str, Any], key: str, budget: int) -> dict[str, Any]:
+    value = payload.get(key)
+    if not isinstance(value, str):
+        return payload
+    lo, hi = 0, len(value)
+    best = _stamp_budget(_copy_payload(payload), budget)
+    if mcp_text_size(best) <= budget:
+        return best
+    best = payload
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        trial = _copy_payload(payload)
+        trial[key] = value[:mid]
+        trial = _stamp_budget(trial, budget)
+        if mcp_text_size(trial) <= budget:
+            best = trial
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    if mcp_text_size(best) > budget:
+        trial = _copy_payload(payload)
+        trial[key] = ""
+        return _stamp_budget(trial, budget)
+    return best
+
+
+def _strip_response_to_essentials(body: dict[str, Any], budget: int) -> dict[str, Any]:
+    raw_meta = body.get("response")
+    meta: dict[str, Any] = raw_meta if isinstance(raw_meta, dict) else {}
+    raw_omitted = meta.get("omitted_records")
+    omitted: dict[str, Any] = raw_omitted if isinstance(raw_omitted, dict) else {}
+    count = omitted.get("count", 0)
+    stripped: dict[str, Any] = {}
+    for key in (
+        "results",
+        "error",
+        "text",
+        "pagination",
+        "required_scopes",
+        "job",
+        "query_used",
+        "hint",
+    ):
+        if key in body:
+            stripped[key] = body[key]
+    stripped["response"] = {
+        "page_complete": bool(meta.get("page_complete")) and not count,
+        "omitted_records": {"count": count},
+        "budget": {
+            "unit": "unicode_characters",
+            "limit": budget,
+            "used": 0,
+            "utf8_bytes": 0,
+        },
+    }
+    if "detail_level" in meta:
+        stripped["response"]["detail_level"] = meta["detail_level"]
+    return stripped
+
+
+def _shrink_attached_fields(payload: dict[str, Any], budget: int) -> dict[str, Any]:
+    payload = _copy_payload(payload)
+    payload = _stamp_budget(payload, budget)
+    for _ in range(24):
+        if mcp_text_size(payload) <= budget:
+            return payload
+        body = {key: value for key, value in payload.items() if key != "response"}
+        victim = _largest_nested_key(body) if isinstance(body, dict) else None
+        if victim is None:
+            break
+        payload[victim] = _omission_marker(payload[victim], reason="response_budget")
+        payload = _stamp_budget(payload, budget)
+    return payload
+
+
+def _emergency_fit(body: dict[str, Any], budget: int) -> dict[str, Any]:
+    """Last resort when even zero included rows cannot fit the full envelope."""
+    body = _strip_response_to_essentials(body, budget)
+    body = _stamp_budget(body, budget)
+    if mcp_text_size(body) <= budget:
+        return body
+    for key in ("hint", "pagination", "job", "query_used"):
+        if mcp_text_size(body) <= budget:
+            return body
+        if key in body:
+            body.pop(key, None)
+            body = _stamp_budget(body, budget)
+    meta = body.get("response")
+    if isinstance(meta, dict) and mcp_text_size(body) > budget:
+        meta.pop("detail_level", None)
+        body = _stamp_budget(body, budget)
+    for key in ("error", "text"):
+        if mcp_text_size(body) <= budget:
+            return body
+        if isinstance(body.get(key), str):
+            body = _truncate_string_field(body, key, budget)
+    if mcp_text_size(body) > budget and body.get("results"):
+        raw_meta = body.get("response")
+        meta = raw_meta if isinstance(raw_meta, dict) else {}
+        raw_omitted = meta.get("omitted_records")
+        omitted = raw_omitted if isinstance(raw_omitted, dict) else {}
+        count = int(omitted.get("count") or 0) + len(body.get("results") or [])
+        body["results"] = []
+        if isinstance(meta, dict):
+            meta["omitted_records"] = {"count": count}
+            meta["page_complete"] = False
+        body = _stamp_budget(body, budget)
+    return _stamp_budget(body, budget)
+
+
+def _fit_payload(
+    body: dict[str, Any],
+    budget: int,
+    tool_name: str,
+    *,
+    emergency: bool = False,
+) -> dict[str, Any]:
+    """Shrink metadata and extra fields until the stamped payload is <= budget.
+
+    Does not drop ``results`` entries; record packing is the caller's job.
+    """
+    body = _copy_payload(body)
+    body = _stamp_budget(body, budget)
+    if mcp_text_size(body) <= budget:
+        return body
+
+    body = _omit_guides(body, tool_name)
+    body = _stamp_budget(body, budget)
+    if mcp_text_size(body) <= budget:
+        return body
+
+    body = _trim_error_details(body)
+    body = _stamp_budget(body, budget)
+    if mcp_text_size(body) <= budget:
+        return body
+
+    body = _shrink_attached_fields(body, budget)
+    if mcp_text_size(body) <= budget:
+        return body
+
+    meta = body.get("response")
+    if isinstance(meta, dict):
+        omitted = meta.get("omitted_records")
+        if isinstance(omitted, dict):
+            ids = list(omitted.get("ids") or [])
+            while ids and mcp_text_size(body) > budget:
+                ids = ids[: max(0, len(ids) // 2)] if len(ids) > 8 else ids[:-1]
+                omitted["ids"] = ids
+                omitted["ids_truncated"] = True
+                body = _stamp_budget(body, budget)
+        hints = meta.get("hints")
+        if isinstance(hints, list):
+            # Keep the first (recovery) hint unless emergency stripping is allowed.
+            while len(hints) > (0 if emergency else 1) and mcp_text_size(body) > budget:
+                hints.pop()
+                meta["hints"] = hints
+                body = _stamp_budget(body, budget)
+        for key in ("original_characters", "include_fields"):
+            if mcp_text_size(body) <= budget:
+                return body
+            if key in meta:
+                meta.pop(key, None)
+                body = _stamp_budget(body, budget)
+        if mcp_text_size(body) > budget and "field_projection" in meta:
+            meta.pop("field_projection", None)
+            body = _stamp_budget(body, budget)
+
+    for key in list(body.keys()):
+        if mcp_text_size(body) <= budget:
+            return body
+        if key in _PROTECTED_BODY_KEYS:
+            continue
+        body.pop(key, None)
+        body = _stamp_budget(body, budget)
+
+    for key in ("error", "text"):
+        if mcp_text_size(body) <= budget:
+            return body
+        if isinstance(body.get(key), str):
+            body = _truncate_string_field(body, key, budget)
+
+    if mcp_text_size(body) <= budget:
+        return body
+    if emergency:
+        return _emergency_fit(body, budget)
+    return _stamp_budget(body, budget)
+
+
 def _pack_records(
     records: list[Any],
     *,
@@ -695,7 +1074,6 @@ def _pack_records(
     include_fields: list[str] | None,
     budget: int,
 ) -> dict[str, Any]:
-    target = max(ABSOLUTE_MIN_CHAR_BUDGET, budget - _BUDGET_SLACK)
     included: list[Any] = []
     omitted: list[Any] = []
 
@@ -712,18 +1090,18 @@ def _pack_records(
 
     for index, record in enumerate(records):
         trial = assemble(included + [record], original_records[index + 1 :])
-        if mcp_text_size(trial) <= target:
+        if mcp_text_size(trial) <= budget:
             included.append(record)
             continue
         shrunk = _shrink_record(record)
         trial_shrunk = assemble(included + [shrunk], original_records[index + 1 :])
-        if mcp_text_size(trial_shrunk) <= target:
+        if mcp_text_size(trial_shrunk) <= budget:
             included.append(shrunk)
             omitted = original_records[index + 1 :]
             break
         stub = _stub_record(original_records[index] if index < len(original_records) else record)
         trial_stub = assemble(included + [stub], original_records[index + 1 :])
-        if mcp_text_size(trial_stub) <= target:
+        if mcp_text_size(trial_stub) <= budget:
             included.append(stub)
             omitted = original_records[index + 1 :]
             break
@@ -733,7 +1111,7 @@ def _pack_records(
         omitted = []
 
     payload = assemble(included, omitted)
-    if mcp_text_size(payload) > budget and included:
+    while mcp_text_size(payload) > budget and included:
         omitted = original_records[len(included) - 1 :] if original_records else omitted
         included = included[:-1]
         payload = assemble(included, omitted)
@@ -741,10 +1119,12 @@ def _pack_records(
             "Dropped the last included record for %s to stay within the character budget",
             tool_name,
         )
-    if omitted:
+    if mcp_text_size(payload) > budget:
+        payload = _emergency_fit(assemble([], original_records or omitted), budget)
+    if omitted or (original_records and len(included) < len(original_records)):
         logger.debug(
             "Omitted %d record(s) from %s to stay within the character budget",
-            len(omitted),
+            (len(original_records) - len(included)) if original_records else len(omitted),
             tool_name,
         )
     return payload
@@ -780,40 +1160,21 @@ def _build_envelope(
         upstream_next=upstream_next if not page_complete else None,
         pagination=body.get("pagination") if isinstance(body.get("pagination"), dict) else None,
     )
-    body["response"] = {
-        "detail_level": level,
-        "include_fields": include_fields,
-        "field_projection": {
-            "applied": level != "full" or include_fields is not None,
-            "reason": (
-                "include_fields"
-                if include_fields is not None
-                else ("detail_level" if level != "full" else None)
-            ),
-        },
-        "page_complete": page_complete,
-        "omitted_records": {
-            "count": len(omitted),
-            "ids": omitted_ids,
-            "ids_truncated": len(omitted) > len(omitted_ids),
-            "reason": "response_budget" if omitted else None,
-        },
-        "hints": hints,
-        "budget": {
-            "unit": "unicode_characters",
-            "limit": budget,
-            "used": 0,
-            "utf8_bytes": 0,
-        },
-    }
+    extra_meta: dict[str, Any] = {}
     if not page_complete:
-        body["response"]["upstream_next"] = upstream_next
-
-    if mcp_text_size(body) > budget:
-        body = _omit_guides(body, tool_name)
-    if mcp_text_size(body) > budget:
-        body = _trim_error_details(body)
-    return _stamp_budget(body, budget)
+        extra_meta["upstream_next"] = upstream_next
+    body["response"] = _response_meta(
+        level=level,
+        include_fields=include_fields,
+        omitted_count=len(omitted),
+        omitted_ids=omitted_ids,
+        ids_truncated=len(omitted) > len(omitted_ids),
+        page_complete=page_complete,
+        hints=hints,
+        budget=budget,
+        extra=extra_meta,
+    )
+    return _fit_payload(body, budget, tool_name)
 
 
 def _finalize_payload(
@@ -824,58 +1185,40 @@ def _finalize_payload(
     fields: list[str] | None,
     budget: int,
 ) -> dict[str, Any]:
-    target = max(ABSOLUTE_MIN_CHAR_BUDGET, budget - _BUDGET_SLACK)
-    body = dict(payload)
-    current = body
-    if mcp_text_size(current) > target:
-        current = _omit_guides(current, tool_name)
-    if mcp_text_size(current) > target:
-        current = _trim_error_details(current)
-    if mcp_text_size(current) > target:
-        current = _shrink_record(current) if isinstance(current, dict) else current
-        if not isinstance(current, dict):
-            current = {"value": current}
-
-    omitted_count = 0
-    hints: list[str] = []
-    if mcp_text_size(current) > target:
-        # Last resort: identity stub of the whole object.
-        stub = _stub_record(payload)
-        current = stub
-        omitted_count = 1
-        hints = _hints(
-            tool_name=tool_name,
-            omitted_count=1,
-            page_complete=False,
-            upstream_next=None,
-            pagination=None,
+    def attach(body: dict[str, Any], omitted_count: int, hints: list[str]) -> dict[str, Any]:
+        current = dict(body)
+        current["response"] = _response_meta(
+            level=level,
+            include_fields=fields,
+            omitted_count=omitted_count,
+            omitted_ids=_omitted_id_list([payload]) if omitted_count else [],
+            ids_truncated=False,
+            page_complete=omitted_count == 0,
+            hints=hints,
+            budget=budget,
         )
+        return current
 
-    current["response"] = {
-        "detail_level": level,
-        "include_fields": fields,
-        "field_projection": {
-            "applied": level != "full" or fields is not None,
-            "reason": (
-                "include_fields" if fields is not None else ("detail_level" if level != "full" else None)
+    current = attach(dict(payload), 0, [])
+    current = _stamp_budget(current, budget)
+    if mcp_text_size(current) > budget:
+        current = _omit_guides(current, tool_name)
+        current = _trim_error_details(current)
+        current = _shrink_attached_fields(current, budget)
+    if mcp_text_size(current) > budget:
+        stub = _stub_record(payload)
+        current = attach(
+            stub,
+            1,
+            _hints(
+                tool_name=tool_name,
+                omitted_count=1,
+                page_complete=False,
+                upstream_next=None,
+                pagination=None,
             ),
-        },
-        "page_complete": omitted_count == 0,
-        "omitted_records": {
-            "count": omitted_count,
-            "ids": _omitted_id_list([payload]) if omitted_count else [],
-            "ids_truncated": False,
-            "reason": "response_budget" if omitted_count else None,
-        },
-        "hints": hints,
-        "budget": {
-            "unit": "unicode_characters",
-            "limit": budget,
-            "used": 0,
-            "utf8_bytes": 0,
-        },
-    }
-    return _stamp_budget(current, budget)
+        )
+    return _fit_payload(current, budget, tool_name, emergency=True)
 
 
 def _shape_error(
@@ -886,64 +1229,79 @@ def _shape_error(
     budget: int,
 ) -> dict[str, Any]:
     body = dict(error)
-    target = max(ABSOLUTE_MIN_CHAR_BUDGET, budget - _BUDGET_SLACK)
-    if mcp_text_size(body) > target:
-        body = _omit_guides(body, tool_name)
-    if mcp_text_size(body) > target:
-        body = _trim_error_details(body)
-    body["response"] = {
-        "detail_level": level,
-        "include_fields": None,
-        "field_projection": {"applied": False, "reason": None},
-        "page_complete": True,
-        "omitted_records": {"count": 0, "ids": [], "ids_truncated": False, "reason": None},
-        "hints": (
-            ["Error details were reduced to stay within the response character budget."]
-            if body.get("details") != error.get("details")
-            else []
-        ),
-        "budget": {
-            "unit": "unicode_characters",
-            "limit": budget,
-            "used": 0,
-            "utf8_bytes": 0,
-        },
-    }
-    return _stamp_budget(body, budget)
+    body["response"] = _response_meta(
+        level=level,
+        include_fields=None,
+        omitted_count=0,
+        omitted_ids=[],
+        ids_truncated=False,
+        page_complete=True,
+        hints=[],
+        budget=budget,
+    )
+    body = _stamp_budget(body, budget)
+    reduced_details = False
+    if mcp_text_size(body) > budget:
+        trimmed = _trim_error_details(_omit_guides(body, tool_name))
+        reduced_details = trimmed.get("details") != error.get("details")
+        body = trimmed
+        if reduced_details:
+            meta = body.setdefault("response", {})
+            if isinstance(meta, dict):
+                meta["hints"] = [
+                    "Error details were reduced to stay within the response character budget."
+                ]
+        body = _stamp_budget(body, budget)
+    if mcp_text_size(body) > budget and isinstance(body.get("error"), str):
+        body = _truncate_string_field(body, "error", budget)
+        meta = body.get("response")
+        if isinstance(meta, dict):
+            hints = list(meta.get("hints") or [])
+            hints.append("Error text was truncated to stay within the response character budget.")
+            meta["hints"] = hints
+    return _fit_payload(body, budget, tool_name, emergency=True)
 
 
 def _shape_string(text: str, *, tool_name: str, level: str, budget: int) -> Any:
-    if len(text) <= budget - _BUDGET_SLACK:
+    if len(text) <= budget:
         return text
-    keep = max(0, budget - 400)
-    payload = {
-        "text": text[:keep],
-        "response": {
-            "detail_level": level,
-            "include_fields": None,
-            "field_projection": {"applied": False, "reason": None},
-            "page_complete": False,
-            "omitted_records": {
-                "count": 1,
-                "ids": [],
-                "ids_truncated": False,
-                "reason": "response_budget",
-            },
-            "hints": [
-                f"{tool_name} returned a string larger than the response character "
-                "budget; the text field is a prefix. Request a higher budget or a "
-                "narrower query."
-            ],
-            "budget": {
-                "unit": "unicode_characters",
-                "limit": budget,
-                "used": 0,
-                "utf8_bytes": 0,
-            },
-            "original_characters": len(text),
-        },
-    }
-    return _stamp_budget(payload, budget)
+
+    hints = [
+        f"{tool_name} returned a string larger than the response character "
+        "budget; the text field is a prefix. Request a higher budget or a "
+        "narrower query."
+    ]
+
+    def make(prefix: str) -> dict[str, Any]:
+        payload = {
+            "text": prefix,
+            "response": _response_meta(
+                level=level,
+                include_fields=None,
+                omitted_count=1,
+                omitted_ids=[],
+                ids_truncated=False,
+                page_complete=False,
+                hints=list(hints),
+                budget=budget,
+                extra={"original_characters": len(text)},
+            ),
+        }
+        return _stamp_budget(payload, budget)
+
+    lo, hi = 0, min(len(text), budget)
+    best: dict[str, Any] | None = None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        trial = make(text[:mid])
+        if mcp_text_size(trial) <= budget:
+            best = trial
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    if best is not None:
+        return best
+    return _fit_payload(make(""), budget, tool_name, emergency=True)
 
 
 def _hints(
@@ -957,23 +1315,25 @@ def _hints(
     if omitted_count <= 0:
         return []
     get_tool = details_tool_for(tool_name)
-    hints = [
-        (
-            f"Omitted {omitted_count} record(s) from this upstream page to stay "
-            "within the response character budget (Unicode characters of the "
-            "pretty-printed JSON text FastMCP puts in the tool result; not a token "
-            "guarantee)."
-        )
-    ]
+    # Keep the recovery line first so budget packing drops longer hints before it.
     if get_tool == "falcon_search_ngsiem":
-        hints.append(
+        hints = [
             "NG-SIEM has no get-by-id tool: retrieve omitted events with a tighter "
             "CQL query (head/tail, include_fields, or detail_level=summary)."
-        )
+        ]
+    elif get_tool:
+        hints = [f"Retrieve omitted records with {get_tool} using the omitted ids."]
     else:
-        hints.append(
-            f"Retrieve omitted records with {get_tool} using the omitted ids."
-        )
+        hints = [
+            "This tool has no get-by-id companion; retrieve omitted records with a "
+            "tighter filter, include_fields, or detail_level=summary on the same tool."
+        ]
+    hints.append(
+        f"Omitted {omitted_count} record(s) from this upstream page to stay "
+        "within the response character budget (Unicode characters of the "
+        "pretty-printed JSON text FastMCP puts in the tool result; not a token "
+        "guarantee)."
+    )
     hints.append(
         "Do not advance pagination.next or offset until omitted ids are retrieved; "
         "they still belong to this upstream page."
@@ -997,47 +1357,18 @@ def _hints(
     return hints
 
 
-def _stamp_budget(payload: dict[str, Any], budget: int) -> dict[str, Any]:
-    meta = payload.setdefault("response", {})
-    budget_meta = meta.setdefault("budget", {})
-    for _ in range(4):
-        text = serialize_mcp_text(payload)
-        budget_meta["unit"] = "unicode_characters"
-        budget_meta["limit"] = budget
-        budget_meta["used"] = len(text)
-        budget_meta["utf8_bytes"] = len(text.encode("utf-8"))
-        meta["budget"] = budget_meta
-        payload["response"] = meta
-        again = serialize_mcp_text(payload)
-        if len(again) == budget_meta["used"]:
-            break
-        budget_meta["used"] = len(again)
-        budget_meta["utf8_bytes"] = len(again.encode("utf-8"))
-    if mcp_text_size(payload) > budget:
-        payload = _omit_guides(payload, "falcon")
-        payload = _trim_error_details(payload)
-        text = serialize_mcp_text(payload)
-        payload["response"]["budget"]["used"] = len(text)
-        payload["response"]["budget"]["utf8_bytes"] = len(text.encode("utf-8"))
-    return payload
-
-
 def validate_cli_char_budget(value: str) -> int:
     """argparse type for ``--response-char-budget``."""
     try:
         parsed = int(value)
     except ValueError as exc:
-        raise ValueError(
-            f"response character budget must be an integer, got {value!r}"
-        ) from exc
+        raise ValueError(f"response character budget must be an integer, got {value!r}") from exc
     if parsed < CLI_MIN_CHAR_BUDGET:
         raise ValueError(
             f"response character budget must be >= {CLI_MIN_CHAR_BUDGET}, got {parsed}"
         )
     if parsed > MAX_CHAR_BUDGET:
-        raise ValueError(
-            f"response character budget must be <= {MAX_CHAR_BUDGET}, got {parsed}"
-        )
+        raise ValueError(f"response character budget must be <= {MAX_CHAR_BUDGET}, got {parsed}")
     return parsed
 
 
@@ -1048,5 +1379,3 @@ def validate_cli_detail_level(value: str) -> str:
             f"default detail level must be one of {', '.join(DETAIL_LEVELS)}, got {value!r}"
         )
     return value
-
-

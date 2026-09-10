@@ -1239,6 +1239,10 @@ class TestExecuteFalconTool(unittest.TestCase):
         self.assertIsInstance(result, dict)
         assert isinstance(result, dict)  # narrow type for Pyright
         self.assertEqual(result["results"], [])
+        self.assertEqual(result["pagination"]["total"], 0)
+        self.assertIsNone(result["pagination"]["next"])
+        self.assertIn("No records returned", result["hint"])
+        self.assertIn("falcon_search_tools", result["hint"])
         self.assertIn("response", result)
         self.assertEqual(result["response"]["omitted_records"]["count"], 0)
 

@@ -570,16 +570,6 @@ def _parse_response_char_budget(value: str) -> int:
         raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
-def _default_response_char_budget() -> int:
-    raw = os.environ.get("FALCON_MCP_RESPONSE_CHAR_BUDGET")
-    if not raw:
-        return DEFAULT_CHAR_BUDGET
-    try:
-        return validate_cli_char_budget(raw)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from exc
-
-
 def _parse_default_detail_level(value: str) -> str:
     """argparse type for --default-detail-level."""
     try:
@@ -731,7 +721,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--response-char-budget",
         type=_parse_response_char_budget,
-        default=_default_response_char_budget(),
+        default=os.environ.get("FALCON_MCP_RESPONSE_CHAR_BUDGET", str(DEFAULT_CHAR_BUDGET)),
         metavar="N",
         help=(
             "Maximum Unicode characters of pretty-printed JSON in each tool result "

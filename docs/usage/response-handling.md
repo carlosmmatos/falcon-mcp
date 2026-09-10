@@ -83,14 +83,22 @@ If this upstream page did not all fit:
 
 - `pagination.next` is set to `null` so a client that follows `next` cannot skip withheld rows
 - `response.upstream_next` holds the cursor that would have been returned
-- `response.omitted_records.ids` lists the withheld identifiers
-- hints name the matching get-by-id tool (for example `falcon_get_detection_details`) and say not
-  to advance `offset` / `next` until those ids are retrieved
+- `response.omitted_records.ids` lists withheld identifiers that still fit; `ids_truncated` is
+  true when the id list itself was shortened to stay under the budget
+- hints name a **registered** get-by-id tool when one exists (for example
+  `falcon_get_detection_details`, `falcon_get_cases`). Search tools without a companion are not
+  given an invented name; the hint says to tighten the query instead.
 
-Empty pages, errors, and NG-SIEM `job` metadata are preserved. Oversized `fql_guide` / `cql_guide`
-strings are replaced with a pointer to the `falcon://…` guide resource rather than truncated
-mid-document. Error `details` dumps are reduced the same way, keeping `error`, status, and
-required scopes.
+The budget is measured **after** the `response` envelope is attached. String results, error
+objects, and omitted-id metadata are packed the same way as search rows. At very small budgets
+(library minimum 256) the envelope may drop hints, id lists, and optional fields so the JSON
+still serializes under `limit`.
+
+Empty pages, errors, and NG-SIEM `job` metadata are preserved. A bare empty list (typical of
+get-by-id tools) is wrapped as `{results: [], pagination: {total: 0, next: null}, hint, response}`.
+Oversized `fql_guide` / `cql_guide` strings are replaced with a pointer to the **registered**
+`falcon://…` guide for that tool, or with a `falcon_list_enabled_tools` hint when the tool has no
+guide. Error `details` dumps are reduced the same way, keeping `error`, status, and required scopes.
 
 ## Retrieving omitted data
 

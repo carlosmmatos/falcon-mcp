@@ -16,12 +16,16 @@ from unittest.mock import patch
 import pydantic_core
 
 from falcon_mcp.common.response import (
+    ABSOLUTE_MIN_CHAR_BUDGET,
+    CLI_MIN_CHAR_BUDGET,
     DEFAULT_CHAR_BUDGET,
     ResponsePolicy,
     configure_response_policy,
+    details_tool_for,
     extract_record_ids,
     get_response_policy,
     mcp_text_size,
+    policy_from_sources,
     project_entity,
     serialize_mcp_text,
     shape_tool_result,
@@ -191,9 +195,7 @@ class TestShapeToolResultBudget(unittest.TestCase):
 
     def test_does_not_advance_cursor_when_page_is_incomplete(self):
         records = [_fat_detection(i, blob_chars=400) for i in range(5)]
-        envelope = _search_envelope(
-            records, total=500, offset=0, limit=5, next="after-this-page"
-        )
+        envelope = _search_envelope(records, total=500, offset=0, limit=5, next="after-this-page")
         shaped = shape_tool_result(
             envelope, tool_name="falcon_search_detections", detail_level="full"
         )
@@ -209,9 +211,7 @@ class TestShapeToolResultBudget(unittest.TestCase):
     def test_offset_pagination_without_cursor_still_holds_the_page(self):
         records = [_fat_detection(i, blob_chars=400) for i in range(4)]
         envelope = _search_envelope(records, total=40, offset=10, limit=4, next=None)
-        shaped = shape_tool_result(
-            envelope, tool_name="falcon_search_hosts", detail_level="full"
-        )
+        shaped = shape_tool_result(envelope, tool_name="falcon_search_hosts", detail_level="full")
         self.assertFalse(shaped["response"]["page_complete"])
         self.assertEqual(shaped["pagination"]["offset"], 10)
         self.assertIsNone(shaped["pagination"]["next"])
@@ -241,7 +241,11 @@ class TestShapeToolResultBudget(unittest.TestCase):
         self.assertEqual(len(shaped["results"]), 1)
         stub = shaped["results"][0]
         self.assertEqual(stub["composite_id"], "det-0")
-        self.assertTrue(stub.get("_omitted") or "script_content" not in stub or isinstance(stub.get("script_content"), dict))
+        self.assertTrue(
+            stub.get("_omitted")
+            or "script_content" not in stub
+            or isinstance(stub.get("script_content"), dict)
+        )
         json.loads(serialize_mcp_text(shaped))
 
     def test_oversized_nested_field_is_explicit(self):
@@ -276,9 +280,7 @@ class TestShapeToolResultBudget(unittest.TestCase):
             "details": {"status_code": 500, "body": {"blob": "E" * 8000}},
             "required_scopes": ["Alerts:read"],
         }
-        shaped = shape_tool_result(
-            error, tool_name="falcon_search_detections", detail_level="full"
-        )
+        shaped = shape_tool_result(error, tool_name="falcon_search_detections", detail_level="full")
         self.assertEqual(shaped["error"], "API request failed")
         self.assertEqual(shaped["required_scopes"], ["Alerts:read"])
         self.assertLessEqual(mcp_text_size(shaped), 3500)
@@ -313,9 +315,7 @@ class TestShapeToolResultBudget(unittest.TestCase):
         first = shape_tool_result(
             envelope, tool_name="falcon_search_detections", detail_level="summary"
         )
-        second = shape_tool_result(
-            first, tool_name="falcon_search_detections", detail_level="full"
-        )
+        second = shape_tool_result(first, tool_name="falcon_search_detections", detail_level="full")
         self.assertEqual(second, first)
 
     def test_bare_list_becomes_envelope_so_omissions_are_explicit(self):
@@ -343,9 +343,7 @@ class TestShapeToolResultBudget(unittest.TestCase):
                 "parsed_query": "#event_simpleName=ProcessRollup2 | head(6)",
             },
         }
-        shaped = shape_tool_result(
-            envelope, tool_name="falcon_search_ngsiem", detail_level="full"
-        )
+        shaped = shape_tool_result(envelope, tool_name="falcon_search_ngsiem", detail_level="full")
         self.assertEqual(shaped["job"]["event_count"], 6)
         self.assertEqual(shaped["job"]["processed_events"], 1000)
         self.assertEqual(shaped["query_used"], envelope["query_used"])
@@ -455,6 +453,240 @@ class TestResponseCli(unittest.TestCase):
         kwargs = mock_server.call_args.kwargs
         self.assertEqual(kwargs["response_char_budget"], 32000)
         self.assertEqual(kwargs["default_detail_level"], "summary")
+
+    def test_policy_from_sources_garbage_env_falls_back(self):
+        os.environ["FALCON_MCP_RESPONSE_CHAR_BUDGET"] = "not-a-number"
+        os.environ["FALCON_MCP_DEFAULT_DETAIL_LEVEL"] = "raw"
+        policy = policy_from_sources()
+        self.assertEqual(policy.char_budget, DEFAULT_CHAR_BUDGET)
+        self.assertEqual(policy.default_detail_level, "compact")
+
+    def test_parse_args_invalid_env_budget_is_usage_error(self):
+        from falcon_mcp.server import parse_args
+
+        os.environ["FALCON_MCP_RESPONSE_CHAR_BUDGET"] = "not-a-number"
+        with patch.object(sys, "argv", ["falcon-mcp"]):
+            with self.assertRaises(SystemExit) as ctx:
+                parse_args()
+        self.assertEqual(ctx.exception.code, 2)
+
+
+class TestBudgetIncludesEnvelope(unittest.TestCase):
+    """The stamped MCP text must be <= limit on every result shape."""
+
+    def test_oversized_string_stays_within_default_budget(self):
+        shaped = shape_tool_result(
+            "x" * 30_000,
+            tool_name="falcon_get_mitre_report",
+            detail_level="full",
+            char_budget=DEFAULT_CHAR_BUDGET,
+        )
+        self.assertIsInstance(shaped, dict)
+        self.assertLessEqual(mcp_text_size(shaped), DEFAULT_CHAR_BUDGET)
+        json.loads(serialize_mcp_text(shaped))
+        self.assertFalse(shaped["response"]["page_complete"])
+        self.assertEqual(shaped["response"]["budget"]["used"], mcp_text_size(shaped))
+        self.assertLess(len(shaped["text"]), 30_000)
+        self.assertEqual(shaped["response"]["original_characters"], 30_000)
+
+    def test_oversized_dict_stays_within_default_budget(self):
+        shaped = shape_tool_result(
+            {"id": "inv-1", "blob": "B" * 24_550},
+            tool_name="falcon_idp_investigate_entity",
+            detail_level="full",
+            char_budget=DEFAULT_CHAR_BUDGET,
+        )
+        self.assertLessEqual(mcp_text_size(shaped), DEFAULT_CHAR_BUDGET)
+        json.loads(serialize_mcp_text(shaped))
+        self.assertEqual(shaped["response"]["budget"]["used"], mcp_text_size(shaped))
+        blob = shaped.get("blob")
+        if isinstance(blob, str):
+            self.assertLessEqual(len(blob), 24_550)
+        else:
+            self.assertTrue(isinstance(blob, dict) and blob.get("_omitted"))
+
+    def test_oversized_error_stays_within_default_budget(self):
+        shaped = shape_tool_result(
+            {"error": "E" * 24_900, "details": {"status_code": 500, "body": "x"}},
+            tool_name="falcon_search_detections",
+            detail_level="full",
+            char_budget=DEFAULT_CHAR_BUDGET,
+        )
+        self.assertLessEqual(mcp_text_size(shaped), DEFAULT_CHAR_BUDGET)
+        json.loads(serialize_mcp_text(shaped))
+        self.assertIn("error", shaped)
+        self.assertEqual(shaped["response"]["budget"]["used"], mcp_text_size(shaped))
+
+    def test_many_long_omitted_ids_fit_cli_minimum(self):
+        records = [{"id": f"case-{i:04d}-" + ("a" * 32)} for i in range(80)]
+        envelope = {
+            "results": records,
+            "pagination": {"total": 80, "offset": 0, "limit": 80, "next": "cursor"},
+        }
+        shaped = shape_tool_result(
+            envelope,
+            tool_name="falcon_search_cases",
+            detail_level="full",
+            char_budget=CLI_MIN_CHAR_BUDGET,
+        )
+        self.assertLessEqual(mcp_text_size(shaped), CLI_MIN_CHAR_BUDGET)
+        json.loads(serialize_mcp_text(shaped))
+        omitted = shaped["response"]["omitted_records"]
+        self.assertEqual(omitted["count"] + len(shaped["results"]), 80)
+        if omitted["count"]:
+            self.assertFalse(shaped["response"]["page_complete"])
+            self.assertIsNone(shaped["pagination"]["next"])
+            self.assertLessEqual(len(omitted.get("ids") or []), omitted["count"])
+            if omitted.get("ids") is not None and len(omitted["ids"]) < omitted["count"]:
+                self.assertTrue(omitted["ids_truncated"])
+
+    def test_absolute_min_budget_returns_minimal_envelope(self):
+        records = [{"id": f"case-{i:04d}-" + ("a" * 32)} for i in range(80)]
+        envelope = {
+            "results": records,
+            "pagination": {"total": 80, "offset": 0, "limit": 80, "next": None},
+        }
+        shaped = shape_tool_result(
+            envelope,
+            tool_name="falcon_search_cases",
+            detail_level="full",
+            char_budget=ABSOLUTE_MIN_CHAR_BUDGET,
+        )
+        self.assertLessEqual(mcp_text_size(shaped), ABSOLUTE_MIN_CHAR_BUDGET)
+        json.loads(serialize_mcp_text(shaped))
+        self.assertIn("response", shaped)
+        self.assertIn("budget", shaped["response"])
+        self.assertGreater(shaped["response"]["omitted_records"]["count"], 0)
+
+
+def _registered_tools_and_resources() -> tuple[set[str], set[str]]:
+    from unittest.mock import MagicMock
+
+    from falcon_mcp.registry import get_available_modules
+
+    client = MagicMock()
+    server = MagicMock()
+    names: set[str] = set()
+    uris: set[str] = set()
+    for cls in get_available_modules().values():
+        module = cls(client)
+        module.register_tools(server)
+        module.register_resources(server)
+        names.update(module.tools)
+        uris.update(module.resources)
+    return names, uris
+
+
+def _omitted_guide(tool_name: str, key: str = "fql_guide") -> Any:
+    envelope = {
+        "results": [{"error": "bad filter"}],
+        "filter_used": "nope",
+        key: "G" * 5000,
+    }
+    shaped = shape_tool_result(
+        envelope,
+        tool_name=tool_name,
+        detail_level="compact",
+        char_budget=CLI_MIN_CHAR_BUDGET,
+    )
+    return shaped[key]
+
+
+class TestRecoveryMaps(unittest.TestCase):
+    def test_details_tool_for_uses_registered_names(self):
+        self.assertEqual(details_tool_for("falcon_search_cases"), "falcon_get_cases")
+        self.assertEqual(
+            details_tool_for("falcon_search_zta_assessments"), "falcon_get_zta_assessments"
+        )
+        self.assertEqual(
+            details_tool_for("falcon_search_workflow_executions"),
+            "falcon_get_workflow_execution_results",
+        )
+        self.assertEqual(
+            details_tool_for("falcon_search_detections"), "falcon_get_detection_details"
+        )
+        self.assertEqual(details_tool_for("falcon_get_host_details"), "falcon_get_host_details")
+        self.assertNotEqual(
+            details_tool_for("falcon_search_vulnerabilities"),
+            "falcon_get_vulnerability_details",
+        )
+        self.assertNotIn("cas_details", details_tool_for("falcon_search_cases") or "")
+
+    def test_details_tool_for_never_invents_unregistered_names(self):
+        names, _uris = _registered_tools_and_resources()
+        invented = []
+        for tool_name in sorted(names):
+            dest = details_tool_for(tool_name)
+            if dest is not None and dest not in names:
+                invented.append(f"{tool_name} -> {dest}")
+        self.assertEqual(invented, [])
+
+    def test_cases_omission_hint_names_real_tool(self):
+        records = [{"id": f"c-{i}", "blob": "Z" * 800} for i in range(6)]
+        envelope = {
+            "results": records,
+            "pagination": {"total": 6, "offset": 0, "limit": 6, "next": None},
+        }
+        shaped = shape_tool_result(
+            envelope,
+            tool_name="falcon_search_cases",
+            detail_level="full",
+            char_budget=CLI_MIN_CHAR_BUDGET,
+        )
+        hint = " ".join(shaped["response"].get("hints") or [])
+        self.assertNotIn("falcon_get_cas_details", hint)
+        if shaped["response"]["omitted_records"]["count"]:
+            self.assertIn("falcon_get_cases", hint)
+
+    def test_omitted_guide_uses_registered_uris(self):
+        expected = {
+            "falcon_search_applications": "falcon://discover/applications/fql-guide",
+            "falcon_search_vulnerabilities": "falcon://spotlight/vulnerabilities/fql-guide",
+            "falcon_search_host_groups": "falcon://host-groups/search/fql-guide",
+            "falcon_search_iocs": "falcon://ioc/search/fql-guide",
+            "falcon_search_detections": "falcon://detections/search/fql-guide",
+        }
+        for tool_name, uri in expected.items():
+            guide = _omitted_guide(tool_name)
+            self.assertTrue(isinstance(guide, dict) and guide.get("_omitted"), msg=guide)
+            self.assertEqual(guide.get("resource"), uri, msg=tool_name)
+
+        ngsiem = _omitted_guide("falcon_search_ngsiem", "cql_guide")
+        self.assertEqual(ngsiem.get("resource"), "falcon://ngsiem/search/cql-guide")
+
+    def test_omitted_unknown_guide_does_not_invent_uri(self):
+        guide = _omitted_guide("falcon_search_zta_assessments")
+        self.assertTrue(isinstance(guide, dict) and guide.get("_omitted"))
+        self.assertNotIn("resource", guide)
+        self.assertNotIn("falcon://zta", str(guide))
+        self.assertNotIn("falcon://assessments/", str(guide))
+        self.assertIn("falcon_list_enabled_tools", guide.get("hint", ""))
+
+    def test_omitted_guide_uris_are_registered_resources(self):
+        names, uris = _registered_tools_and_resources()
+        dangling: list[str] = []
+        for tool_name in sorted(n for n in names if n.startswith("falcon_search_")):
+            guide = _omitted_guide(tool_name)
+            resource = guide.get("resource") if isinstance(guide, dict) else None
+            if resource and resource not in uris:
+                dangling.append(f"{tool_name} -> {resource}")
+        self.assertEqual(dangling, [])
+
+
+class TestEmptyListEnvelope(unittest.TestCase):
+    def test_bare_empty_list_includes_pagination_and_hint(self):
+        shaped = shape_tool_result(
+            [],
+            tool_name="falcon_get_detection_details",
+            detail_level="compact",
+            char_budget=DEFAULT_CHAR_BUDGET,
+        )
+        self.assertEqual(shaped["results"], [])
+        self.assertEqual(shaped["pagination"]["total"], 0)
+        self.assertIsNone(shaped["pagination"]["next"])
+        self.assertIn("No records returned", shaped["hint"])
+        self.assertIn("falcon_search_tools", shaped["hint"])
+        self.assertLessEqual(mcp_text_size(shaped), DEFAULT_CHAR_BUDGET)
 
 
 if __name__ == "__main__":
