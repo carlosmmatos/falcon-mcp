@@ -12,7 +12,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import uvicorn
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
 
 from falcon_mcp import registry
 from falcon_mcp.client import FalconClient, get_version
@@ -24,6 +23,7 @@ from falcon_mcp.common.auth import (
 )
 from falcon_mcp.common.fql import FQL_FILTER_HINT_SUFFIX
 from falcon_mcp.common.logging import configure_logging, get_logger
+from falcon_mcp.common.responses import BoundedFastMCP as FastMCP
 from falcon_mcp.modules.base import READ_ONLY_ANNOTATIONS, offload_to_thread
 from falcon_mcp.tool_filter import Resolution, ToolPolicy, ToolRecord
 
@@ -41,6 +41,10 @@ _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 
 BASE_INSTRUCTIONS = (
     "This server provides access to CrowdStrike Falcon capabilities.\n\n"
+    "Tool results are byte-bounded. response_options selects full (default), compact, "
+    "summary, fields, or a lower max_bytes. In dynamic mode, put these options outside "
+    "parameters. If response_control contains a result_handle, use falcon_read_result "
+    "in this session to inspect the saved page before advancing upstream pagination.\n\n"
     f"Composing filters: {FQL_FILTER_HINT_SUFFIX} When a tool's filter parameter names "
     "a falcon:// guide resource, read it before composing a filter: it lists the fields "
     "and operators that endpoint actually accepts, and an unsupported field returns an "
@@ -189,6 +193,8 @@ class FalconMCPServer:
 
         # Register tools and resources from modules
         tool_count = self._register_tools()
+        self.server.register_result_tool()
+        tool_count += 1
         tool_word = "tool" if tool_count == 1 else "tools"
 
         resource_count = self._register_resources()
@@ -232,8 +238,9 @@ class FalconMCPServer:
         return (
             f"{BASE_INSTRUCTIONS}\n\nThis server is running in dynamic mode: the "
             "Falcon tools are not individually registered, and are reached through "
-            "three tools instead — falcon_search_tools and falcon_execute_tool for "
-            "discovery, plus the always-on falcon_list_enabled_tools inventory.\n\n"
+            "four tools instead — falcon_search_tools and falcon_execute_tool for "
+            "discovery, plus the always-on falcon_list_enabled_tools inventory and "
+            "falcon_read_result for bounded saved-result retrieval.\n\n"
             "1. falcon_search_tools with a keyword query, or a module name, lists "
             "candidate tools ordered by likely relevance. These entries carry each "
             "tool's name, description, and read_only / destructive flags, but no "
@@ -639,7 +646,7 @@ def parse_args() -> argparse.Namespace:
         "--dynamic",
         action="store_true",
         default=os.environ.get("FALCON_MCP_DYNAMIC", "").lower() == "true",
-        help="Enable dynamic mode: exposes 3 tools (list-enabled-tools + search + execute) "
+        help="Enable dynamic mode: exposes 4 tools (list-enabled-tools + search + execute + read-result) "
         "instead of all module tools (env: FALCON_MCP_DYNAMIC)",
     )
 

@@ -10,7 +10,7 @@ Configure your CrowdStrike API credentials and server settings using environment
 ### Required
 
 | Variable | Description |
-|----------|-------------|
+| ---------- | ------------- |
 | `FALCON_CLIENT_ID` | CrowdStrike API client ID |
 | `FALCON_CLIENT_SECRET` | CrowdStrike API client secret |
 | `FALCON_BASE_URL` | API base URL for your region (e.g., `https://api.crowdstrike.com`) |
@@ -18,7 +18,7 @@ Configure your CrowdStrike API credentials and server settings using environment
 ### Optional
 
 | Variable | Default | Description |
-|----------|---------|-------------|
+| ---------- | --------- | ------------- |
 | `FALCON_MEMBER_CID` | — | Flight Control child CID (MSSP) |
 | `FALCON_MCP_MODULES` | all | Comma-separated list of modules to enable |
 | `FALCON_MCP_TRANSPORT` | `stdio` | Transport method: `stdio`, `sse`, `streamable-http` |
@@ -27,13 +27,21 @@ Configure your CrowdStrike API credentials and server settings using environment
 | `FALCON_MCP_PORT` | `8000` | Port for HTTP transports |
 | `FALCON_MCP_STATELESS_HTTP` | `false` | Stateless mode for scalable deployments (required for AWS AgentCore) |
 | `FALCON_MCP_API_KEY` | — | API key for HTTP transport authentication |
-| `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose three tools instead of all module tools |
+| `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose four tools instead of all module tools |
+| `FALCON_MCP_RESPONSE_MAX_BYTES` | `25000` | Serialized MCP tool-result byte budget (2048–1000000) |
+| `FALCON_MCP_RESULT_TTL_SECONDS` | `300` | Session-bound snapshot expiry (1–3600 seconds) |
+| `FALCON_MCP_RESULT_STORE_BYTES` | `67108864` | Maximum retained serialized snapshot bytes (1024–1073741824) |
 | `FALCON_MCP_READ_ONLY` | `false` | Register only read-only tools ([tool restrictions](/falcon-mcp/usage/cli/#restricting-the-tool-surface)) |
 | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names |
 | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy URL for outbound API connections |
 
 ## Using a .env File
+
+See [response budgets](../usage/response-budgets.md) for detail levels, field
+selection, bounded retrieval, and migration requirements. Lossless oversized
+result retrieval requires stdio or stateful HTTP with session affinity;
+stateless HTTP explicitly reports when a snapshot cannot be retained.
 
 The recommended approach for development is a `.env` file.
 

@@ -32,6 +32,7 @@ _FOREIGN_TOOL = "falcon_search_applications"
 
 # Always registered regardless of filtering, so tests subtract them out.
 _META_TOOLS = {
+    "falcon_read_result",
     "falcon_list_enabled_modules",
     "falcon_list_enabled_tools",
     "falcon_check_connectivity",
@@ -820,7 +821,7 @@ class TestDynamicModeToolFiltering(unittest.TestCase):
         server = self._dynamic_server(mock_client)
         self.assertEqual(
             set(server.server._tool_manager._tools),
-            {"falcon_list_enabled_tools", "falcon_search_tools", "falcon_execute_tool"},
+            {"falcon_list_enabled_tools", "falcon_search_tools", "falcon_execute_tool", "falcon_read_result"},
         )
 
     def test_dynamic_mode_omits_list_enabled_modules(self, mock_client):

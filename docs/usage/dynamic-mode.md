@@ -1,5 +1,5 @@
 <!-- meta:title Dynamic Mode -->
-<!-- meta:description Reduce context usage by exposing three tools instead of all module tools. -->
+<!-- meta:description Reduce context usage with discovery, execution, inventory, and bounded result retrieval. -->
 <!-- meta:section usage -->
 <!-- meta:link-base /falcon-mcp/ -->
 
@@ -7,12 +7,17 @@ The Falcon MCP server registers one tool schema per tool across all enabled modu
 set grows, this balloons the context window that AI clients must hold in every conversation — even
 for tools that will never be called in that session.
 
-Dynamic mode solves this by replacing the full tool surface with three tools. Two are the
+Dynamic mode solves this by replacing the full tool surface with four tools. Two are the
 discovery pair: `falcon_search_tools` to find a tool and look up its parameter schema, and
 `falcon_execute_tool` to run it. The third, `falcon_list_enabled_tools`, is always on and
 returns the full inventory of Falcon tools available on the server. The agent fetches the
 schema for exactly the tools it needs, paying a short discovery round-trip instead of a large
 up-front context cost.
+
+The fourth tool, `falcon_read_result`, retrieves oversized saved results in bounded
+pieces within the same session. Pass `response_options` on `falcon_execute_tool`,
+outside its `parameters` object, to select `summary`, `compact`, `full`, fields,
+or a smaller byte budget. See [response budgets](response-budgets.md).
 
 > [!NOTE]
 > Dynamic mode is in public preview. The feature flag and behavior are stable, but feedback is
@@ -44,15 +49,16 @@ are loaded into the catalog and `--transport` to choose the server transport.
 
 ## How It Works
 
-With dynamic mode enabled, the server exposes three tools instead of the full module surface —
+With dynamic mode enabled, the server exposes four tools instead of the full module surface —
 the `falcon_search_tools` / `falcon_execute_tool` discovery pair plus the always-on
 `falcon_list_enabled_tools`:
 
 | Tool | Purpose |
-|------|---------|
+| ------ | --------- |
 | `falcon_list_enabled_tools` | List the Falcon tools available on this server, grouped by the module each belongs to (meta-tools excluded) |
 | `falcon_search_tools` | Find tools by keyword or module, then return the parameters of the ones you name |
 | `falcon_execute_tool` | Execute a discovered tool by name with the given parameters |
+| `falcon_read_result` | Inspect a saved oversized result in bounded pieces within the same session |
 
 The typical agent workflow is:
 
