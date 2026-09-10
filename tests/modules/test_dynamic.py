@@ -1177,9 +1177,9 @@ class TestExecuteFalconTool(unittest.TestCase):
                 parameters={"ids": ["det1"]},
             )
         )
-        self.assertIsInstance(result, list)
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["id"], "det1")
+        self.assertIsInstance(result, dict)
+        self.assertEqual(len(result["results"]), 1)
+        self.assertEqual(result["results"][0]["id"], "det1")
 
     def test_execute_unknown_tool_returns_error(self):
         result = run_async(
@@ -1206,7 +1206,7 @@ class TestExecuteFalconTool(unittest.TestCase):
         self.assertIn("ids", result["expected_parameters"])
 
     def test_execute_returns_full_result(self):
-        """Results are returned in full — no truncation regardless of list size."""
+        """Small pages under the budget return every record (wrapped in results)."""
         large_result = [{"id": f"det{i}"} for i in range(20)]
         self.mock_client.command.return_value = {
             "status_code": 200,
@@ -1219,9 +1219,9 @@ class TestExecuteFalconTool(unittest.TestCase):
                 parameters={"ids": [f"det{i}" for i in range(20)]},
             )
         )
-        # All 20 records come back untouched — no total_count wrapper, no truncation.
-        self.assertIsInstance(result, list)
-        self.assertEqual(len(result), 20)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(len(result["results"]), 20)
+        self.assertEqual(result["response"]["omitted_records"]["count"], 0)
 
     def test_execute_empty_list_returns_normalized_dict(self):
         """Empty list results are returned as {results:[], pagination:{total:0,next:None}, hint:...}."""
@@ -1241,8 +1241,10 @@ class TestExecuteFalconTool(unittest.TestCase):
         self.assertEqual(result["results"], [])
         self.assertEqual(result["pagination"]["total"], 0)
         self.assertIsNone(result["pagination"]["next"])
-        self.assertIn("hint", result)
         self.assertIn("No records returned", result["hint"])
+        self.assertIn("falcon_search_tools", result["hint"])
+        self.assertIn("response", result)
+        self.assertEqual(result["response"]["omitted_records"]["count"], 0)
 
     def test_normalize_empty_passthrough_for_dict(self):
         """Non-list results (e.g. dicts from non-paginated tools) pass through unchanged."""

@@ -221,6 +221,8 @@ falcon-mcp --modules detections --tools falcon_search_applications
 | `--read-only` | `FALCON_MCP_READ_ONLY` | Registers only read-only tools |
 | `--tools` | `FALCON_MCP_TOOLS` | Allow-list of tool names, added to the enabled modules |
 | `--exclude-tools` | `FALCON_MCP_EXCLUDE_TOOLS` | Deny-list of tool names |
+| `--response-char-budget` | `FALCON_MCP_RESPONSE_CHAR_BUDGET` | Max characters of pretty-printed JSON per Falcon tool result (default 25000) |
+| `--default-detail-level` | `FALCON_MCP_DEFAULT_DETAIL_LEVEL` | Default `detail_level`: `summary`, `compact`, or `full` |
 
 Tool names are the `falcon_`-prefixed names your client displays. An unrecognized name aborts
 startup rather than being ignored, so a typo in a deny-list cannot silently leave a tool exposed.

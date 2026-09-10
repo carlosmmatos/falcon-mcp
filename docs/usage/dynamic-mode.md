@@ -71,6 +71,10 @@ default — the agent must rely on the `read_only` and `destructive` fields retu
 `falcon_search_tools` to understand a tool's mutation risk before executing it. Those flags are
 present on discovery results, so mutation risk is visible before the schema is fetched.
 
+Inner tools still accept `detail_level` and `include_fields`. Pass them in
+`falcon_execute_tool`'s `parameters` object; the inner handler is already wrapped, so execute does
+not shape the result a second time. See [Response Handling](/falcon-mcp/usage/response-handling/).
+
 ## Two Response Shapes
 
 `falcon_search_tools` answers two different questions, and returns a different shape for each.

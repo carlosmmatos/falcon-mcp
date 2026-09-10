@@ -85,6 +85,8 @@ falcon-mcp --help
 | `--read-only` | `FALCON_MCP_READ_ONLY` | `false` | Register only read-only tools, disabling every tool that mutates tenant state |
 | `--tools` | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `--exclude-tools` | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names to withhold |
+| `--response-char-budget` | `FALCON_MCP_RESPONSE_CHAR_BUDGET` | `25000` | Max Unicode characters of pretty-printed JSON per Falcon tool result ([response handling](/falcon-mcp/usage/response-handling/)) |
+| `--default-detail-level` | `FALCON_MCP_DEFAULT_DETAIL_LEVEL` | `compact` | Default `detail_level`: `summary`, `compact`, or `full` |
 
 ## Restricting the Tool Surface
 
