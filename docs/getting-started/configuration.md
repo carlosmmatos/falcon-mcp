@@ -31,6 +31,8 @@ Configure your CrowdStrike API credentials and server settings using environment
 | `FALCON_MCP_READ_ONLY` | `false` | Register only read-only tools ([tool restrictions](/falcon-mcp/usage/cli/#restricting-the-tool-surface)) |
 | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names |
+| `FALCON_MCP_RESPONSE_CHAR_BUDGET` | `25000` | Max Unicode characters of pretty-printed JSON in each Falcon tool result ([response handling](/falcon-mcp/usage/response-handling/)) |
+| `FALCON_MCP_DEFAULT_DETAIL_LEVEL` | `compact` | Default `detail_level`: `summary`, `compact`, or `full` (full still respects the budget) |
 | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy URL for outbound API connections |
 
 ## Using a .env File
@@ -70,6 +72,8 @@ FALCON_BASE_URL=https://api.crowdstrike.com
 #FALCON_MCP_READ_ONLY=false
 #FALCON_MCP_TOOLS=falcon_search_detections,falcon_search_hosts
 #FALCON_MCP_EXCLUDE_TOOLS=falcon_delete_host_groups
+#FALCON_MCP_RESPONSE_CHAR_BUDGET=25000
+#FALCON_MCP_DEFAULT_DETAIL_LEVEL=compact
 #FALCON_PROXY_URL=http://proxy.corp.example.com:8080
 ```
 
@@ -89,6 +93,15 @@ falcon-mcp
 ```
 
 **Priority order:** CLI flag > `FALCON_MCP_MODULES` env var > all modules (default)
+
+## Response size
+
+Falcon tool results are projected (`detail_level`, optional `include_fields`) and packed to a
+character budget so they fit in MCP client context. See
+[Response Handling](/falcon-mcp/usage/response-handling/) for what the budget measures, how omitted
+records are retrieved, and compatibility notes.
+
+**Priority order:** CLI flag > matching `FALCON_MCP_*` env var > default (`25000` / `compact`)
 
 ## HTTP Transport Security
 

@@ -1506,6 +1506,14 @@ def generate_overview_page(modules: dict[str, dict[str, Any]]) -> str:
         "The Falcon MCP Server provides the following modules. Each module requires specific CrowdStrike API scopes."
     )
     lines.append("")
+    lines.append(
+        "Tool results are projected and packed to a character budget so they fit in MCP client context. See"
+    )
+    lines.append(
+        "[Response Handling](/falcon-mcp/usage/response-handling/) for `detail_level`, `include_fields`, and"
+    )
+    lines.append("how to retrieve omitted records.")
+    lines.append("")
     lines.append("| Module | API Scopes | Description |")
     lines.append("|--------|-------------------|-------------|")
 

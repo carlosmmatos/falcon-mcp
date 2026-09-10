@@ -6,6 +6,10 @@
 
 The Falcon MCP Server provides the following modules. Each module requires specific CrowdStrike API scopes.
 
+Tool results are projected and packed to a character budget so they fit in MCP client context. See
+[Response Handling](/falcon-mcp/usage/response-handling/) for `detail_level`, `include_fields`, and
+how to retrieve omitted records.
+
 | Module | API Scopes | Description |
 |--------|-------------------|-------------|
 | [AgentWorks](/falcon-mcp/modules/agentworks/) | `Charlotte AI Agent Definition:read`, `Charlotte AI Agent Definition:write` | Calling, listing, and observing CrowdStrike AgentWorks (agentic-studio) Charlotte AI agents and their execution traces |

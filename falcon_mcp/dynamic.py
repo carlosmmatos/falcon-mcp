@@ -723,9 +723,10 @@ class DynamicMode:
         it again with tool_names to get the parameter schema and the mutation risk
         (read_only / destructive fields). Do not execute destructive tools without
         confirming the user's intent.
-        Results are returned in full — use each tool's own limit parameter to control
-        response volume. Empty result sets return a dict with results, pagination, and
-        hint keys rather than a bare empty list.
+        Results pass through the same detail_level / include_fields / character-budget
+        shaping as a direct tool call (set those on the inner tool's parameters). Empty
+        result sets return a dict with results, pagination, and hint keys rather than a
+        bare empty list.
         """
         entry = self.catalog.get(tool_name)
         if not entry:
