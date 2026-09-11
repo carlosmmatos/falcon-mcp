@@ -56,6 +56,7 @@ class TestFalconMCPServer(unittest.TestCase):
             stateless_http=False,
             host="127.0.0.1",
             port=8000,
+            response_max_chars=None,
         )
 
         # Verify modules initialization
@@ -228,6 +229,7 @@ class TestFalconMCPServer(unittest.TestCase):
             stateless_http=True,
             host="127.0.0.1",
             port=8000,
+            response_max_chars=None,
         )
 
     @patch("falcon_mcp.server.FalconClient")
@@ -257,6 +259,7 @@ class TestFalconMCPServer(unittest.TestCase):
             stateless_http=False,
             host="127.0.0.1",
             port=8000,
+            response_max_chars=None,
         )
 
     @patch("falcon_mcp.server.FalconClient")
@@ -339,6 +342,7 @@ class TestFalconMCPServer(unittest.TestCase):
             stateless_http=False,
             host="0.0.0.0",
             port=9090,
+            response_max_chars=None,
         )
 
     @patch("falcon_mcp.server.uvicorn")

@@ -44,15 +44,15 @@ are loaded into the catalog and `--transport` to choose the server transport.
 
 ## How It Works
 
-With dynamic mode enabled, the server exposes three tools instead of the full module surface —
-the `falcon_search_tools` / `falcon_execute_tool` discovery pair plus the always-on
-`falcon_list_enabled_tools`:
+With dynamic mode enabled, the server exposes the discovery pair plus two always-on
+infrastructure tools instead of the full module surface:
 
 | Tool | Purpose |
 |------|---------|
 | `falcon_list_enabled_tools` | List the Falcon tools available on this server, grouped by the module each belongs to (meta-tools excluded) |
 | `falcon_search_tools` | Find tools by keyword or module, then return the parameters of the ones you name |
 | `falcon_execute_tool` | Execute a discovered tool by name with the given parameters |
+| `falcon_continue_result` | Read the next slice of an oversized result ([response overflow](/falcon-mcp/usage/response-overflow/)) |
 
 The typical agent workflow is:
 

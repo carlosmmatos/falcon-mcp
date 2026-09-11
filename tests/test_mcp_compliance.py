@@ -480,7 +480,7 @@ class TestMCPComplianceDynamic(unittest.IsolatedAsyncioTestCase):
         self.mcp_server = FalconMCPServer(enabled_modules={"detections"}, dynamic=True)
 
     async def test_dynamic_mode_exposes_three_tools(self):
-        """Dynamic mode MUST expose exactly 3 tools."""
+        """Dynamic mode exposes the discovery trio plus overflow continue."""
         async with create_connected_server_and_client_session(
             self.mcp_server.server
         ) as session:
@@ -489,7 +489,12 @@ class TestMCPComplianceDynamic(unittest.IsolatedAsyncioTestCase):
         tool_names = {t.name for t in tools}
         self.assertEqual(
             tool_names,
-            {"falcon_list_enabled_tools", "falcon_search_tools", "falcon_execute_tool"},
+            {
+                "falcon_list_enabled_tools",
+                "falcon_search_tools",
+                "falcon_execute_tool",
+                "falcon_continue_result",
+            },
         )
 
     async def test_dynamic_meta_tool_annotations(self):

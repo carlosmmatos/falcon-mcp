@@ -184,10 +184,12 @@ See the [Docker Deployment guide](https://developer.crowdstrike.com/falcon-mcp/d
 ## Dynamic Mode
 
 Running many modules at once inflates the context window every AI client must hold. Dynamic mode
-replaces the full tool surface with three tools — `falcon_list_enabled_tools` to see every tool the
-server has available, `falcon_search_tools` to find candidate tools by keyword and then fetch the parameter
+replaces the full tool surface with `falcon_list_enabled_tools` to see every tool the server has
+available, `falcon_search_tools` to find candidate tools by keyword and then fetch the parameter
 schema for the one you pick, and `falcon_execute_tool` to run it — so agents only load the schemas
-they actually need.
+they actually need. Oversized tool results are sliced at the MCP boundary; call
+`falcon_continue_result` with the returned handle before following upstream pagination. See
+[Response overflow](https://developer.crowdstrike.com/falcon-mcp/usage/response-overflow/).
 
 ```bash
 falcon-mcp --dynamic
