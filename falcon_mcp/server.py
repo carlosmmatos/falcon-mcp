@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import uvicorn
 from dotenv import load_dotenv
+
 from falcon_mcp import registry
 from falcon_mcp.client import FalconClient, get_version
 from falcon_mcp.common.auth import (
@@ -25,8 +26,10 @@ from falcon_mcp.common.logging import configure_logging, get_logger
 from falcon_mcp.common.overflow import (
     CLI_MIN_MAX_CHARS,
     DEFAULT_MAX_CHARS,
-    BoundedFastMCP as FastMCP,
     coerce_max_chars,
+)
+from falcon_mcp.common.overflow import (
+    BoundedFastMCP as FastMCP,
 )
 from falcon_mcp.modules.base import READ_ONLY_ANNOTATIONS, offload_to_thread
 from falcon_mcp.tool_filter import Resolution, ToolPolicy, ToolRecord
