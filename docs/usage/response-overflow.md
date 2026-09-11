@@ -30,7 +30,12 @@ a token count and does not include the JSON-RPC frame.
     "handle": "…",
     "unit": "records",
     "upstream_cursor": true,
-    "hint": "…"
+    "hint": "…",
+    "recovery": {
+      "method": "get_by_id",
+      "tool": "falcon_get_host_details",
+      "ids_param": "ids"
+    }
   }
 }
 ```
@@ -43,8 +48,17 @@ a token count and does not include the JSON-RPC frame.
 
 `falcon_continue_result` does not call Falcon. Handles are bound to the MCP session,
 expire after five minutes by default, and are not issued on
-`FALCON_MCP_STATELESS_HTTP=true`. When there is no handle, use `overflow.ids` with a
-get-by-id tool or narrow the query. Do not replay mutations to recover data.
+`FALCON_MCP_STATELESS_HTTP=true`.
+
+When there is no handle, follow `overflow.recovery` for leftover `overflow.ids`:
+
+| `recovery.method` | What to do |
+| --- | --- |
+| `get_by_id` | Call `recovery.tool` with leftover ids in `recovery.ids_param`. |
+| `search_ids` | Re-call `recovery.tool` with `filter` / `limit` from the footer (a tight id clause). Do not replay the original wide search. |
+| `narrow_query` | The leftover rows are not addressable by id (for example NG-SIEM). Tighten the original query. |
+
+Do not replay mutations to recover data. Combined search tools stay the happy path; this map does not add get-by-id siblings.
 
 ## Configuration
 

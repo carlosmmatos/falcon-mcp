@@ -56,7 +56,9 @@ BASE_INSTRUCTIONS = (
     "Oversized results: when a tool result exceeds the response budget it keeps a "
     "prefix of complete records and an overflow object. Call falcon_continue_result "
     "with overflow.handle and overflow.offset before following pagination.next. "
-    "Do not replay mutations to recover data."
+    "If the handle is gone, follow overflow.recovery — a get-by-id tool when one "
+    "exists, otherwise the same search with a tight id filter. Do not replay the "
+    "original wide query or any mutation."
 )
 
 

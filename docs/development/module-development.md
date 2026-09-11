@@ -303,6 +303,8 @@ See the main [Contributing Guide](https://github.com/CrowdStrike/falcon-mcp/blob
 
 Do not truncate or project tool results inside a module. Oversized MCP payloads are
 sliced once at the server boundary; see [response overflow](/falcon-mcp/usage/response-overflow/).
+If you add a get-by-id sibling for a search tool, register it in
+`falcon_mcp/common/overflow_recovery.py` so `overflow.recovery` stays accurate.
 
 ### Error Handling
 

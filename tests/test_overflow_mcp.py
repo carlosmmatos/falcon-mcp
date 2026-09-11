@@ -65,6 +65,11 @@ class TestOverflowMcpPath:
             assert first["pagination"]["next"] is None
             assert first["overflow"]["upstream_cursor"] is True
             assert first["overflow"]["handle"]
+            assert first["overflow"]["recovery"] == {
+                "method": "get_by_id",
+                "tool": "falcon_get_detection_details",
+                "ids_param": "ids",
+            }
 
             continued = _text(
                 await session.call_tool(

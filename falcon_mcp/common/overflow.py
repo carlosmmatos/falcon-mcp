@@ -23,6 +23,7 @@ from mcp.types import CallToolResult, TextContent, ToolAnnotations
 from pydantic import Field
 
 from falcon_mcp.common.logging import get_logger
+from falcon_mcp.common.overflow_recovery import recovery_plan
 from falcon_mcp.common.utils import unwrap_field_default
 
 logger = get_logger(__name__)
@@ -66,18 +67,18 @@ _ID_KEYS = (
 
 _CONTINUE_HINT = (
     "Unread rows remain from this Falcon page. Call falcon_continue_result with "
-    "this handle and overflow.offset before following pagination.next. Do not "
-    "replay mutations to recover data."
+    "this handle and overflow.offset before following pagination.next. If the "
+    "handle is gone, follow overflow.recovery. Do not replay mutations."
 )
 _TEXT_HINT = (
     "This value does not fit as one JSON object. Concatenate overflow.text from "
     "falcon_continue_result calls, advancing char_offset, then increment offset "
-    "when record_complete is true."
+    "when record_complete is true. If the handle is gone, follow overflow.recovery."
 )
 _NO_HANDLE_HINT = (
-    "No snapshot is available (stateless HTTP, storage full, or expired). Use "
-    "overflow.ids with a get-by-id tool, or narrow the query. Do not automatically "
-    "repeat mutations."
+    "No snapshot is available (stateless HTTP, storage full, or expired). Follow "
+    "overflow.recovery for leftover overflow.ids. Do not replay the original wide "
+    "query or any mutation."
 )
 
 
@@ -157,17 +158,22 @@ class OverflowStore:
     ) -> None:
         self.max_bytes = max_bytes
         self.ttl_seconds = ttl_seconds
-        self._entries: dict[str, tuple[object, str, float]] = {}
+        self._entries: dict[str, tuple[object, str, float, str | None]] = {}
         self._used = 0
         self._lock = threading.Lock()
 
     def _purge_locked(self, now: float) -> None:
         expired = [handle for handle, item in self._entries.items() if item[2] <= now]
         for handle in expired:
-            _owner, payload, _expires = self._entries.pop(handle)
+            _owner, payload, _expires, _tool = self._entries.pop(handle)
             self._used -= len(payload.encode("utf-8"))
 
-    def put(self, owner: object | None, data: Any) -> str | None:
+    def put(
+        self,
+        owner: object | None,
+        data: Any,
+        tool_name: str | None = None,
+    ) -> str | None:
         """Store ``data`` for ``owner``. Returns None when storage is unavailable."""
         if owner is None:
             return None
@@ -181,7 +187,12 @@ class OverflowStore:
             if count + self._used > self.max_bytes or len(self._entries) >= _MAX_STORE_ENTRIES:
                 return None
             handle = secrets.token_urlsafe(18)
-            self._entries[handle] = (owner, payload, time.monotonic() + self.ttl_seconds)
+            self._entries[handle] = (
+                owner,
+                payload,
+                time.monotonic() + self.ttl_seconds,
+                tool_name,
+            )
             self._used += count
             return handle
 
@@ -197,6 +208,15 @@ class OverflowStore:
                 )
             return json.loads(entry[1])
 
+    def tool_name(self, owner: object | None, handle: str) -> str | None:
+        """Return the tool that produced a stored page, if it is still readable."""
+        with self._lock:
+            self._purge_locked(time.monotonic())
+            entry = self._entries.get(handle)
+            if entry is None or entry[0] is not owner:
+                return None
+            return entry[3]
+
 
 def bound_result(
     value: Any,
@@ -207,6 +227,7 @@ def bound_result(
     offset: int = 0,
     char_offset: int = 0,
     handle: str | None = None,
+    tool_name: str | None = None,
 ) -> Any:
     """Return ``value`` unchanged when it fits; otherwise a sliced overflow document."""
     if offset < 0 or char_offset < 0:
@@ -216,7 +237,9 @@ def bound_result(
     if rows is None:
         if offset == 0 and char_offset == 0 and mcp_size(value) <= budget:
             return value
-        return _bound_value_text(value, budget, store, owner, char_offset, handle)
+        return _bound_value_text(
+            value, budget, store, owner, char_offset, handle, tool_name=tool_name
+        )
 
     if offset == 0 and char_offset == 0 and mcp_size(value) <= budget:
         return value
@@ -224,7 +247,7 @@ def bound_result(
         return {"error": "offset exceeds saved result"}
 
     remaining = rows[offset:]
-    snapshot = handle or store.put(owner, value)
+    snapshot = handle or store.put(owner, value, tool_name=tool_name)
     if char_offset:
         if not remaining:
             return {"error": "char_offset was set but no record remains at offset"}
@@ -237,6 +260,7 @@ def bound_result(
             char_offset=char_offset,
             leftover=len(remaining) - 1,
             ids=record_ids(remaining[1:]),
+            tool_name=tool_name,
         )
 
     included: list[Any] = []
@@ -250,6 +274,7 @@ def bound_result(
                 ids=record_ids(remaining[index + 1 :]),
                 handle=snapshot,
                 unit="records",
+                tool_name=tool_name,
             ),
         )
         if mcp_size(trial) <= budget:
@@ -265,6 +290,7 @@ def bound_result(
                 char_offset=0,
                 leftover=len(remaining) - 1,
                 ids=record_ids(remaining[1:]),
+                tool_name=tool_name,
             )
         break
 
@@ -276,6 +302,7 @@ def bound_result(
         ids=record_ids(leftover_rows),
         handle=snapshot,
         unit="records",
+        tool_name=tool_name,
     )
     return _fit(_envelope(envelope, included, footer), budget)
 
@@ -287,6 +314,7 @@ def _footer(
     ids: list[Any],
     handle: str | None,
     unit: str,
+    tool_name: str | None = None,
     **extra: Any,
 ) -> dict[str, Any]:
     hint = _CONTINUE_HINT if handle else _NO_HANDLE_HINT
@@ -299,6 +327,7 @@ def _footer(
         "handle": handle,
         "unit": unit,
         "hint": hint,
+        "recovery": recovery_plan(tool_name, ids),
     }
     footer.update(extra)
     return footer
@@ -342,6 +371,10 @@ def _fit(body: dict[str, Any], budget: int) -> dict[str, Any]:
     body["overflow"] = footer
     if mcp_size(body) <= budget:
         return body
+    footer.pop("recovery", None)
+    body["overflow"] = footer
+    if mcp_size(body) <= budget:
+        return body
     minimal = {
         "results": body.get("results") or [],
         "overflow": {
@@ -376,6 +409,7 @@ def _bound_record_text(
     char_offset: int,
     leftover: int,
     ids: list[Any] | None = None,
+    tool_name: str | None = None,
 ) -> dict[str, Any]:
     text = _compact_json(row)
     return _slice_text(
@@ -387,6 +421,7 @@ def _bound_record_text(
         leftover=leftover,
         envelope=envelope,
         ids=ids or record_ids([row]),
+        tool_name=tool_name,
     )
 
 
@@ -397,8 +432,9 @@ def _bound_value_text(
     owner: object | None,
     char_offset: int,
     handle: str | None,
+    tool_name: str | None = None,
 ) -> Any:
-    snapshot = handle or store.put(owner, value)
+    snapshot = handle or store.put(owner, value, tool_name=tool_name)
     text = _compact_json(value) if not isinstance(value, str) else value
     if char_offset == 0 and not snapshot:
         stub = {
@@ -408,6 +444,7 @@ def _bound_value_text(
                 ids=record_ids([value]) if isinstance(value, dict) else [],
                 handle=None,
                 unit="characters",
+                tool_name=tool_name,
             )
         }
         if isinstance(value, dict) and "error" in value:
@@ -422,6 +459,7 @@ def _bound_value_text(
         leftover=0,
         envelope={},
         ids=record_ids([value]) if isinstance(value, dict) else [],
+        tool_name=tool_name,
     )
 
 
@@ -435,6 +473,7 @@ def _slice_text(
     leftover: int,
     envelope: dict[str, Any],
     ids: list[Any] | None = None,
+    tool_name: str | None = None,
 ) -> dict[str, Any]:
     if char_offset > len(text):
         return {"error": "char_offset exceeds saved value"}
@@ -448,6 +487,7 @@ def _slice_text(
             ids=ids or [],
             handle=handle,
             unit="characters",
+            tool_name=tool_name,
             char_offset=char_offset,
             next_char_offset=None if complete else end,
             record_complete=complete,
@@ -533,6 +573,11 @@ class BoundedFastMCP(FastMCP):
             return raw
         if name == CONTINUE_TOOL:
             return tool.fn_metadata.convert_result(raw)
+        source = name
+        if name == "falcon_execute_tool" and isinstance(arguments, dict):
+            inner = arguments.get("tool_name")
+            if isinstance(inner, str) and inner:
+                source = inner
         bounded = await anyio.to_thread.run_sync(
             partial(
                 bound_result,
@@ -540,6 +585,7 @@ class BoundedFastMCP(FastMCP):
                 self.response_max_chars,
                 self.overflow_store,
                 self.owner(),
+                tool_name=source,
             )
         )
         return tool.fn_metadata.convert_result(bounded)
@@ -584,6 +630,7 @@ class BoundedFastMCP(FastMCP):
             offset=offset,
             char_offset=char_offset,
             handle=handle,
+            tool_name=self.overflow_store.tool_name(self.owner(), handle),
         )
 
 
