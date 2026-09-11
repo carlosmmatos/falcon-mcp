@@ -1311,6 +1311,7 @@ class TestDynamicServerIntegration(unittest.TestCase):
         self.assertIn("falcon_list_enabled_tools", tool_names)
         self.assertIn("falcon_search_tools", tool_names)
         self.assertIn("falcon_execute_tool", tool_names)
+        mock_server_instance.register_overflow_tool.assert_called_once()
         # These must NOT be registered in dynamic mode
         self.assertNotIn("falcon_check_connectivity", tool_names)
         self.assertNotIn("falcon_list_enabled_modules", tool_names)

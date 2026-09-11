@@ -12,8 +12,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 import uvicorn
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
-
 from falcon_mcp import registry
 from falcon_mcp.client import FalconClient, get_version
 from falcon_mcp.common.auth import (
@@ -24,6 +22,12 @@ from falcon_mcp.common.auth import (
 )
 from falcon_mcp.common.fql import FQL_FILTER_HINT_SUFFIX
 from falcon_mcp.common.logging import configure_logging, get_logger
+from falcon_mcp.common.overflow import (
+    CLI_MIN_MAX_CHARS,
+    DEFAULT_MAX_CHARS,
+    BoundedFastMCP as FastMCP,
+    coerce_max_chars,
+)
 from falcon_mcp.modules.base import READ_ONLY_ANNOTATIONS, offload_to_thread
 from falcon_mcp.tool_filter import Resolution, ToolPolicy, ToolRecord
 
@@ -48,7 +52,11 @@ BASE_INSTRUCTIONS = (
     "no-match.\n\n"
     "Changing state: readOnlyHint=false marks a tool that changes tenant state, and "
     "destructiveHint=true marks one whose effect cannot be undone. Confirm the user's "
-    "intent before calling either."
+    "intent before calling either.\n\n"
+    "Oversized results: when a tool result exceeds the response budget it keeps a "
+    "prefix of complete records and an overflow object. Call falcon_continue_result "
+    "with overflow.handle and overflow.offset before following pagination.next. "
+    "Do not replay mutations to recover data."
 )
 
 
@@ -73,6 +81,7 @@ class FalconMCPServer:
         read_only: bool = False,
         allowed_tools: set[str] | None = None,
         excluded_tools: set[str] | None = None,
+        response_max_chars: int | None = None,
     ):
         """Initialize the Falcon MCP server.
 
@@ -93,6 +102,8 @@ class FalconMCPServer:
             read_only: Register only read-only tools, overriding allowed_tools
             allowed_tools: Additive allow-list of prefixed tool names.
             excluded_tools: Deny-list of prefixed tool names; wins over allowed_tools
+            response_max_chars: Max Unicode characters of unstructured MCP result
+                text (defaults to FALCON_MCP_RESPONSE_MAX_CHARS or 25000)
 
         Raises:
             ValueError: If allowed_tools or excluded_tools name unknown tools
@@ -170,6 +181,7 @@ class FalconMCPServer:
             stateless_http=self.stateless_http,
             host=self.host,
             port=self.port,
+            response_max_chars=response_max_chars,
         )
 
         # Set the server version in MCP protocol metadata (returned in initialize handshake)
@@ -189,6 +201,8 @@ class FalconMCPServer:
 
         # Register tools and resources from modules
         tool_count = self._register_tools()
+        self.server.register_overflow_tool()
+        tool_count += 1
         tool_word = "tool" if tool_count == 1 else "tools"
 
         resource_count = self._register_resources()
@@ -232,8 +246,9 @@ class FalconMCPServer:
         return (
             f"{BASE_INSTRUCTIONS}\n\nThis server is running in dynamic mode: the "
             "Falcon tools are not individually registered, and are reached through "
-            "three tools instead — falcon_search_tools and falcon_execute_tool for "
-            "discovery, plus the always-on falcon_list_enabled_tools inventory.\n\n"
+            "falcon_search_tools and falcon_execute_tool for discovery, plus the "
+            "always-on falcon_list_enabled_tools inventory and falcon_continue_result "
+            "for oversized pages.\n\n"
             "1. falcon_search_tools with a keyword query, or a module name, lists "
             "candidate tools ordered by likely relevance. These entries carry each "
             "tool's name, description, and read_only / destructive flags, but no "
@@ -304,9 +319,10 @@ class FalconMCPServer:
 
         if self.dynamic:
             # Dynamic mode: expose only the discovery/execution meta-tools plus
-            # falcon_list_enabled_tools above (3 tools total) so the context window
-            # stays minimal. The catalog applies the policy while building, so a
-            # withheld tool is absent from search and 404s in the executor.
+            # falcon_list_enabled_tools above so the context window stays minimal.
+            # falcon_continue_result is registered after this method. The catalog
+            # applies the policy while building, so a withheld tool is absent from
+            # search and 404s in the executor.
             from falcon_mcp.dynamic import DynamicMode
 
             self._dynamic_mode = DynamicMode(self.modules, self.server, self.tool_policy)
@@ -533,6 +549,22 @@ def parse_tools_list(tools_string: str) -> list[str]:
     return [t.strip() for t in tools_string.split(",") if t.strip()]
 
 
+def _parse_response_max_chars(value: str) -> int:
+    """argparse type for --response-max-chars."""
+    try:
+        int(value)
+    except (TypeError, ValueError) as exc:
+        raise argparse.ArgumentTypeError(
+            f"response-max-chars must be an integer, got {value!r}"
+        ) from exc
+    budget = coerce_max_chars(value, cli=True)
+    if budget < CLI_MIN_MAX_CHARS:
+        raise argparse.ArgumentTypeError(
+            f"response-max-chars must be at least {CLI_MIN_MAX_CHARS}"
+        )
+    return budget
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Falcon MCP Server")
@@ -639,8 +671,21 @@ def parse_args() -> argparse.Namespace:
         "--dynamic",
         action="store_true",
         default=os.environ.get("FALCON_MCP_DYNAMIC", "").lower() == "true",
-        help="Enable dynamic mode: exposes 3 tools (list-enabled-tools + search + execute) "
-        "instead of all module tools (env: FALCON_MCP_DYNAMIC)",
+        help="Enable dynamic mode: exposes discovery tools (list-enabled-tools + "
+        "search + execute) plus falcon_continue_result instead of all module tools "
+        "(env: FALCON_MCP_DYNAMIC)",
+    )
+
+    parser.add_argument(
+        "--response-max-chars",
+        type=_parse_response_max_chars,
+        default=os.environ.get("FALCON_MCP_RESPONSE_MAX_CHARS", str(DEFAULT_MAX_CHARS)),
+        metavar="N",
+        help=(
+            "Maximum Unicode characters of unstructured text in each tool result "
+            f"(default: {DEFAULT_MAX_CHARS}, env: FALCON_MCP_RESPONSE_MAX_CHARS). "
+            "Not a token cap."
+        ),
     )
 
     # Blast-radius controls. These compose with --modules and with each other;
@@ -701,6 +746,7 @@ def main() -> None:
             read_only=args.read_only,
             allowed_tools=set(args.tools),
             excluded_tools=set(args.exclude_tools),
+            response_max_chars=args.response_max_chars,
         )
         logger.info("Starting server with %s transport", args.transport)
         server.run(args.transport)

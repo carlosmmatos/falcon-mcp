@@ -723,9 +723,11 @@ class DynamicMode:
         it again with tool_names to get the parameter schema and the mutation risk
         (read_only / destructive fields). Do not execute destructive tools without
         confirming the user's intent.
-        Results are returned in full — use each tool's own limit parameter to control
-        response volume. Empty result sets return a dict with results, pagination, and
-        hint keys rather than a bare empty list.
+        Results pass through the same response budget as a direct tool call. Oversized
+        pages keep a prefix of complete records and an overflow handle for
+        falcon_continue_result; finish that page before following pagination.next.
+        Empty result sets return a dict with results, pagination, and hint keys
+        rather than a bare empty list.
         """
         entry = self.catalog.get(tool_name)
         if not entry:

@@ -27,10 +27,13 @@ Configure your CrowdStrike API credentials and server settings using environment
 | `FALCON_MCP_PORT` | `8000` | Port for HTTP transports |
 | `FALCON_MCP_STATELESS_HTTP` | `false` | Stateless mode for scalable deployments (required for AWS AgentCore) |
 | `FALCON_MCP_API_KEY` | — | API key for HTTP transport authentication |
-| `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose three tools instead of all module tools |
+| `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose discovery tools instead of all module tools |
 | `FALCON_MCP_READ_ONLY` | `false` | Register only read-only tools ([tool restrictions](/falcon-mcp/usage/cli/#restricting-the-tool-surface)) |
 | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names |
+| `FALCON_MCP_RESPONSE_MAX_CHARS` | `25000` | [Response overflow](/falcon-mcp/usage/response-overflow/): max Unicode characters of tool result text |
+| `FALCON_MCP_OVERFLOW_TTL_SECONDS` | `300` | How long an overflow snapshot is kept |
+| `FALCON_MCP_OVERFLOW_STORE_BYTES` | `67108864` | In-memory capacity for overflow snapshots |
 | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy URL for outbound API connections |
 
 ## Using a .env File

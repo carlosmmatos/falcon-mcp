@@ -301,6 +301,9 @@ See the main [Contributing Guide](https://github.com/CrowdStrike/falcon-mcp/blob
 
 ## Best Practices
 
+Do not truncate or project tool results inside a module. Oversized MCP payloads are
+sliced once at the server boundary; see [response overflow](/falcon-mcp/usage/response-overflow/).
+
 ### Error Handling
 
 1. **Use Common Error Utilities**: Always use `handle_api_response` for API responses instead of manual status code checks

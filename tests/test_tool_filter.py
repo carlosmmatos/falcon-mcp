@@ -35,6 +35,7 @@ _META_TOOLS = {
     "falcon_list_enabled_modules",
     "falcon_list_enabled_tools",
     "falcon_check_connectivity",
+    "falcon_continue_result",
 }
 
 _MUTATING_ANNOTATIONS = ToolAnnotations(
@@ -820,7 +821,12 @@ class TestDynamicModeToolFiltering(unittest.TestCase):
         server = self._dynamic_server(mock_client)
         self.assertEqual(
             set(server.server._tool_manager._tools),
-            {"falcon_list_enabled_tools", "falcon_search_tools", "falcon_execute_tool"},
+            {
+                "falcon_list_enabled_tools",
+                "falcon_search_tools",
+                "falcon_execute_tool",
+                "falcon_continue_result",
+            },
         )
 
     def test_dynamic_mode_omits_list_enabled_modules(self, mock_client):
