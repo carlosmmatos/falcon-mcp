@@ -52,6 +52,8 @@ The MCP Server requires internet connectivity to communicate with CrowdStrike's 
 | `FALCON_MCP_TOOLS` | *(optional)* | Comma-separated allow-list of specific tool names to enable, additive to the modules selected via `FALCON_MCP_MODULES` |
 | `FALCON_MCP_EXCLUDE_TOOLS` | *(optional)* | Comma-separated deny-list of tool names to disable. Takes precedence over `FALCON_MCP_TOOLS` and `FALCON_MCP_READ_ONLY` |
 | `FALCON_MCP_DYNAMIC` | *(optional)* | Enable dynamic mode, which exposes a small set of meta-tools for on-demand tool discovery instead of registering the full tool surface |
+| `FALCON_MCP_SEMANTIC_SEARCH` | *(optional)* | Rank dynamic-mode search results with TypeSafe. Requires `FALCON_MCP_DYNAMIC=true`, `TYPESAFE_API_KEY`, and the `typesafe` extra |
+| `TYPESAFE_API_KEY` | *(optional)* | TypeSafe API key used when semantic ranking is enabled |
 
 > [!CAUTION]
 > `FALCON_MCP_STATELESS_HTTP` must be set to `true` for proper operation in AgentCore's stateless container environment.

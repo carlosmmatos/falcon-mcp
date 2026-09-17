@@ -194,8 +194,16 @@ falcon-mcp --dynamic
 # or: FALCON_MCP_DYNAMIC=true
 ```
 
+Optional semantic ranking reorders those keyword hits by how well each tool matches the request,
+using TypeSafe. It requires the `typesafe` extra and `TYPESAFE_API_KEY`:
+
+```bash
+pip install 'falcon-mcp[typesafe]'
+falcon-mcp --dynamic --semantic-search
+```
+
 See the [Dynamic Mode guide](https://developer.crowdstrike.com/falcon-mcp/usage/dynamic-mode/) for
-the full discover → execute workflow and trade-offs.
+the full discover → execute workflow, semantic ranking, and trade-offs.
 
 ## Restricting What a Server Can Do
 

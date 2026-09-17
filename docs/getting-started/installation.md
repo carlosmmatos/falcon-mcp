@@ -34,6 +34,14 @@ uvx falcon-mcp
 
 This is the recommended approach for editor integrations.
 
+To enable [semantic ranking](/falcon-mcp/usage/dynamic-mode/#semantic-ranking) of dynamic-mode
+search results, install the TypeSafe extra:
+
+```bash
+pip install 'falcon-mcp[typesafe]'
+# or: uv tool install 'falcon-mcp[typesafe]'
+```
+
 > [!NOTE]
 > If you just want to interact with falcon-mcp via an agent chat interface rather than running the server yourself, see the [Deployment](/falcon-mcp/deployment/docker/) options.
 
