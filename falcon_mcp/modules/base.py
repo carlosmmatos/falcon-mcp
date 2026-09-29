@@ -17,6 +17,7 @@ from mcp.types import ToolAnnotations
 from falcon_mcp.client import FalconClient
 from falcon_mcp.common.errors import _format_error_response, handle_api_response
 from falcon_mcp.common.logging import get_logger
+from falcon_mcp.common.response import with_response_controls
 from falcon_mcp.common.utils import filter_none_values, prepare_api_parameters
 
 logger = get_logger(__name__)
@@ -120,8 +121,11 @@ class BaseModule(ABC):
             annotations: MCP tool annotations. Defaults to READ_ONLY_ANNOTATIONS.
         """
         prefixed_name = f"falcon_{name}"
+        # Shape once at this boundary so dynamic execute (which calls Tool.run)
+        # cannot transform the same Falcon result a second time.
+        controlled = with_response_controls(method, prefixed_name)
         server.add_tool(
-            offload_to_thread(method),
+            offload_to_thread(controlled),
             name=prefixed_name,
             annotations=annotations or READ_ONLY_ANNOTATIONS,
             structured_output=False,

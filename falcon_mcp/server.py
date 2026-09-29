@@ -24,6 +24,15 @@ from falcon_mcp.common.auth import (
 )
 from falcon_mcp.common.fql import FQL_FILTER_HINT_SUFFIX
 from falcon_mcp.common.logging import configure_logging, get_logger
+from falcon_mcp.common.response import (
+    DEFAULT_CHAR_BUDGET,
+    DEFAULT_DETAIL_LEVEL,
+    DETAIL_LEVELS,
+    configure_response_policy,
+    policy_from_sources,
+    validate_cli_char_budget,
+    validate_cli_detail_level,
+)
 from falcon_mcp.modules.base import READ_ONLY_ANNOTATIONS, offload_to_thread
 from falcon_mcp.tool_filter import Resolution, ToolPolicy, ToolRecord
 
@@ -48,7 +57,13 @@ BASE_INSTRUCTIONS = (
     "no-match.\n\n"
     "Changing state: readOnlyHint=false marks a tool that changes tenant state, and "
     "destructiveHint=true marks one whose effect cannot be undone. Confirm the user's "
-    "intent before calling either."
+    "intent before calling either.\n\n"
+    "Response size: Falcon tools accept detail_level (summary | compact | full; default "
+    "compact) and optional include_fields. full returns every API field but still "
+    "respects the server response character budget. When records or fields are omitted, "
+    "the result includes a response object with omitted ids and retrieval hints. Do not "
+    "advance pagination.next or offset until omitted ids from the current page are "
+    "retrieved — that cursor is the next upstream page, not the withheld rows."
 )
 
 
@@ -73,6 +88,8 @@ class FalconMCPServer:
         read_only: bool = False,
         allowed_tools: set[str] | None = None,
         excluded_tools: set[str] | None = None,
+        response_char_budget: int | None = None,
+        default_detail_level: str | None = None,
     ):
         """Initialize the Falcon MCP server.
 
@@ -93,10 +110,22 @@ class FalconMCPServer:
             read_only: Register only read-only tools, overriding allowed_tools
             allowed_tools: Additive allow-list of prefixed tool names.
             excluded_tools: Deny-list of prefixed tool names; wins over allowed_tools
+            response_char_budget: Max Unicode characters of pretty-printed JSON
+                written into MCP tool result text (defaults to
+                FALCON_MCP_RESPONSE_CHAR_BUDGET or 25000)
+            default_detail_level: Default detail_level for Falcon tools (summary,
+                compact, or full). full still respects the character budget.
 
         Raises:
             ValueError: If allowed_tools or excluded_tools name unknown tools
         """
+        configure_response_policy(
+            policy_from_sources(
+                char_budget=response_char_budget,
+                default_detail_level=default_detail_level,
+            )
+        )
+
         # Store configuration
         self.base_url = base_url
         self.debug = debug
@@ -533,6 +562,22 @@ def parse_tools_list(tools_string: str) -> list[str]:
     return [t.strip() for t in tools_string.split(",") if t.strip()]
 
 
+def _parse_response_char_budget(value: str) -> int:
+    """argparse type for --response-char-budget."""
+    try:
+        return validate_cli_char_budget(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
+def _parse_default_detail_level(value: str) -> str:
+    """argparse type for --default-detail-level."""
+    try:
+        return validate_cli_detail_level(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Falcon MCP Server")
@@ -673,6 +718,31 @@ def parse_args() -> argparse.Namespace:
         "Unknown names abort startup (env: FALCON_MCP_EXCLUDE_TOOLS)",
     )
 
+    parser.add_argument(
+        "--response-char-budget",
+        type=_parse_response_char_budget,
+        default=os.environ.get("FALCON_MCP_RESPONSE_CHAR_BUDGET", str(DEFAULT_CHAR_BUDGET)),
+        metavar="N",
+        help=(
+            "Maximum Unicode characters of pretty-printed JSON in each tool result "
+            f"(default: {DEFAULT_CHAR_BUDGET}, env: FALCON_MCP_RESPONSE_CHAR_BUDGET). "
+            "This is not a token cap and does not guarantee fit in every client's "
+            "remaining context."
+        ),
+    )
+
+    parser.add_argument(
+        "--default-detail-level",
+        type=_parse_default_detail_level,
+        default=os.environ.get("FALCON_MCP_DEFAULT_DETAIL_LEVEL", DEFAULT_DETAIL_LEVEL),
+        help=(
+            "Default detail_level for Falcon tools: "
+            f"{', '.join(DETAIL_LEVELS)} "
+            f"(default: {DEFAULT_DETAIL_LEVEL}, env: FALCON_MCP_DEFAULT_DETAIL_LEVEL). "
+            "full still respects the response character budget."
+        ),
+    )
+
     return parser.parse_args()
 
 
@@ -701,6 +771,8 @@ def main() -> None:
             read_only=args.read_only,
             allowed_tools=set(args.tools),
             excluded_tools=set(args.exclude_tools),
+            response_char_budget=args.response_char_budget,
+            default_detail_level=args.default_detail_level,
         )
         logger.info("Starting server with %s transport", args.transport)
         server.run(args.transport)

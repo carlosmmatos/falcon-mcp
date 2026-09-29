@@ -88,7 +88,9 @@ class YourModule(BaseModule):
         falcon://your-module/entities/fql-guide before constructing filter expressions.
         Returns full entity details including id, name, and status.
         """
-        # Use base class methods for common patterns
+        # Use base class methods for common patterns. Do not add detail_level or
+        # include_fields yourself: `_add_tool` injects them and shapes the MCP
+        # result once (see docs/usage/response-handling.md).
         results = self._base_search_api_call(
             operation="YourFalconAPIOperation",
             search_params={
