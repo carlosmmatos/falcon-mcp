@@ -19,6 +19,13 @@ from falcon_mcp.common.fql import FQL_FILTER_HINT_SUFFIX
 from falcon_mcp.common.logging import get_logger
 from falcon_mcp.filter_hints import FILTER_HINTS, QUERY_STRING_HINTS
 from falcon_mcp.modules.base import READ_ONLY_ANNOTATIONS, BaseModule
+from falcon_mcp.semantic import (
+    CANDIDATE_CAP,
+    CAPABILITY_GATE,
+    ToolRanker,
+    apply_ranking,
+    attach_relevance,
+)
 from falcon_mcp.tool_filter import Resolution, ToolPolicy, ToolRecord
 
 logger = get_logger(__name__)
@@ -166,9 +173,7 @@ class ToolEntry:
 class DynamicToolCatalog:
     """Builds a searchable catalog of tools from modules via a scratch FastMCP instance."""
 
-    def __init__(
-        self, modules: dict[str, BaseModule], policy: ToolPolicy | None = None
-    ) -> None:
+    def __init__(self, modules: dict[str, BaseModule], policy: ToolPolicy | None = None) -> None:
         self._entries: dict[str, ToolEntry] = {}
         self._policy = policy or ToolPolicy()
         self.resolution = Resolution(
@@ -227,6 +232,17 @@ class DynamicToolCatalog:
         """Name the rule that withholds this tool, or None if no rule did."""
         return self.resolution.reasons.get(tool_name)
 
+    def is_exact_name(self, query: str) -> bool:
+        """True when the query names a catalog tool, with or without the prefix.
+
+        Naming a tool is a request for that tool, not a relevance ranking, so
+        semantic search does not rerank an exact hit.
+        """
+        query_key = normalize_identifier(query)
+        return bool(query_key) and any(
+            query_key in entry.name_key for entry in self._entries.values()
+        )
+
     def describe_policy(self) -> str:
         """Summarize every filtering rule the server has enabled."""
         return self._policy.describe()
@@ -280,9 +296,7 @@ class DynamicToolCatalog:
         """
         return self.full_coverage_count(query, module) == 0
 
-    def _match_set(
-        self, query: str, module: str | None
-    ) -> tuple[list[ToolEntry], list[ToolEntry]]:
+    def _match_set(self, query: str, module: str | None) -> tuple[list[ToolEntry], list[ToolEntry]]:
         """Split matching entries into a full-coverage block and a partial one.
 
         Requiring every token narrows well when the query is already tool-shaped, but
@@ -334,9 +348,7 @@ class DynamicToolCatalog:
         # as a precise match.
         gate = [t for t in tokens if t not in _STOPWORDS]
         if not gate:
-            return [], [
-                e for e in candidates if all(t in e.search_corpus for t in tokens)
-            ]
+            return [], [e for e in candidates if all(t in e.search_corpus for t in tokens)]
         # At least half the gate tokens, rounding up: enough to demote a near miss
         # rather than drop it, without admitting every tool that shares one word.
         threshold = (len(gate) + 1) // 2
@@ -498,9 +510,11 @@ class DynamicMode:
         modules: dict[str, BaseModule],
         server: FastMCP,
         policy: ToolPolicy | None = None,
+        ranker: ToolRanker | None = None,
     ) -> None:
         self.server = server
         self.catalog = DynamicToolCatalog(modules, policy)
+        self._ranker = ranker
 
     def register(self) -> None:
         self.server.add_tool(
@@ -570,10 +584,12 @@ class DynamicMode:
         This is the entry point in dynamic mode, and it works in two steps.
 
         Search first: pass keywords in query, or a module name (or nothing at all) to
-        browse. Results are ordered by likely relevance, but the order is a keyword
-        match with no view of your intent: read each tool's description and its
-        read_only / destructive flags and pick the one that fits, rather than taking
-        the first row. These results deliberately carry no parameters.
+        browse. Results are ordered by likely relevance. When semantic ranking is
+        enabled, that order reflects how well each tool matches the request, not just
+        keyword overlap; otherwise it is a keyword match with no view of intent. In
+        either case, read each tool's description and its read_only / destructive
+        flags and pick the one that fits, rather than taking the first row. These
+        results deliberately carry no parameters.
 
         Then get the schema: call this tool again with tool_names set to the names you
         picked, and those entries come back with every parameter (type, required,
@@ -588,7 +604,22 @@ class DynamicMode:
         if tool_names:
             return self._describe_named(tool_names)
 
-        results = self.catalog.search(query=query, module=module, limit=limit)
+        pool_limit = limit
+        consider_ranker = (
+            self._ranker is not None and bool(query) and not self.catalog.is_exact_name(query)
+        )
+        if consider_ranker:
+            # Rank a wider keyword window than the page, then slice. Ranking only
+            # the already-capped page would hide a better tool that sat just
+            # outside `limit`.
+            pool_limit = max(limit, CANDIDATE_CAP)
+
+        results = self.catalog.search(query=query, module=module, limit=pool_limit)
+        ranking_applied = False
+        ranking_gated = False
+        if consider_ranker and results:
+            results, ranking_applied, ranking_gated = await self._rerank(query, results)
+        results = results[:limit]
         total = self.catalog.count_matches(query=query, module=module)
         truncated = total > len(results)
 
@@ -635,22 +666,39 @@ class DynamicMode:
             "truncated": truncated,
         }
         hints: list[str] = []
-        full_on_page = min(
-            self.catalog.full_coverage_count(query=query, module=module), len(results)
-        )
-        partial_on_page = len(results) - full_on_page
-        if not full_on_page:
+        if ranking_applied:
+            # Keyword-tier split no longer describes the page order.
             hints.append(
-                "No tool matched every word, so these match at least one of them, "
-                "ordered by likely relevance. Read the descriptions and pick the one "
-                "that fits rather than assuming the capability is missing."
+                "These results are ordered by how well each tool matches the "
+                "request, not just keyword overlap. Read the descriptions and "
+                "pick the one that fits rather than taking the first row."
             )
-        elif partial_on_page:
-            hints.append(
-                f"The first {full_on_page} match every word; the remaining "
-                f"{partial_on_page} match only some of them and rank below. Read the "
-                "descriptions rather than assuming the top result is the right tool."
+            envelope["ranking"] = "semantic"
+        else:
+            full_on_page = min(
+                self.catalog.full_coverage_count(query=query, module=module),
+                len(results),
             )
+            partial_on_page = len(results) - full_on_page
+            if not full_on_page:
+                hints.append(
+                    "No tool matched every word, so these match at least one of them, "
+                    "ordered by likely relevance. Read the descriptions and pick the one "
+                    "that fits rather than assuming the capability is missing."
+                )
+            elif partial_on_page:
+                hints.append(
+                    f"The first {full_on_page} match every word; the remaining "
+                    f"{partial_on_page} match only some of them and rank below. Read the "
+                    "descriptions rather than assuming the top result is the right tool."
+                )
+            if ranking_gated:
+                hints.append(
+                    "Semantic ranking did not find a strong match for this request "
+                    "among these keyword hits. Read the descriptions, or call "
+                    "falcon_list_enabled_tools."
+                )
+                envelope["ranking"] = "keyword"
         if truncated:
             hints.append(
                 f"Showing {len(results)} of {total}. Call falcon_list_enabled_tools "
@@ -664,6 +712,28 @@ class DynamicMode:
         )
         envelope["hint"] = " ".join(hints)
         return envelope
+
+    async def _rerank(
+        self, query: str, results: list[dict[str, Any]]
+    ) -> tuple[list[dict[str, Any]], bool, bool]:
+        """Reorder a keyword page with TypeSafe. Failures keep keyword order.
+
+        Returns (results, ranking_applied, ranking_gated).
+        """
+        assert self._ranker is not None
+        head = results[:CANDIDATE_CAP]
+        tail = results[CANDIDATE_CAP:]
+        try:
+            ranking = await self._ranker.rank(query, head)
+        except Exception:
+            logger.warning("TypeSafe ranking failed; using keyword order", exc_info=True)
+            return results, False, False
+        if ranking is None:
+            return results, False, False
+        if ranking.capability_present < CAPABILITY_GATE:
+            return attach_relevance(head, ranking) + tail, False, True
+        ranked_head = apply_ranking(head, ranking)
+        return attach_relevance(ranked_head, ranking) + tail, True, False
 
     def _describe_named(self, tool_names: list[str]) -> dict[str, Any]:
         """Return full schemas for the named tools, reporting any this server lacks.
@@ -760,9 +830,7 @@ class DynamicMode:
                 return {
                     "error": f"Parameter validation failed: {e}",
                     "tool": tool_name,
-                    "expected_parameters": self.catalog.summarize_parameters(
-                        entry.tool.parameters
-                    ),
+                    "expected_parameters": self.catalog.summarize_parameters(entry.tool.parameters),
                 }
             return {"error": f"Execution failed: {e}", "tool": tool_name}
 

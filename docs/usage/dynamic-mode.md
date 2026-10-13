@@ -60,8 +60,10 @@ The typical agent workflow is:
    absent from that list is not available, whether because its module is off or a tool filter
    withholds it. Its `by_module` map also publishes the module names `falcon_search_tools` accepts.
 2. Call `falcon_search_tools` with a keyword or module name to see candidate tools, ordered by
-   likely relevance, with their `read_only` and `destructive` flags. The order is a keyword match,
-   not a judgement of intent — read the descriptions and flags and pick the tool that fits.
+   likely relevance, with their `read_only` and `destructive` flags. Keyword search retrieves the
+   candidates; when [semantic ranking](#semantic-ranking) is enabled, TypeSafe reorders that
+   shortlist by how well each tool matches the request. Either way, read the descriptions and flags
+   and pick the tool that fits.
 3. Call `falcon_search_tools` again with `tool_names` set to the tool you picked, to get its
    parameters.
 4. Call `falcon_execute_tool` with the tool name and parameters to run it.
@@ -171,7 +173,9 @@ within each of those groups the tool covering more of the query comes first. Whe
 otherwise tied — a bare noun like `iocs` matches `falcon_search_iocs` and `falcon_remove_iocs`
 equally — the read-only one ranks first, so the order never steers toward a mutator by default.
 Ordering is deterministic: the same query returns the same order on every server process. A query
-with no keywords (module browsing) is ordered by tool name.
+with no keywords (module browsing) is ordered by tool name. When [semantic ranking](#semantic-ranking)
+is enabled, TypeSafe reorders the keyword shortlist by how well each tool serves the request; an
+exact tool name still skips that step.
 
 Every word in `query` is matched against the tool's name, description, module, and parameter names.
 Generic words — `list`, `show`, `get`, `find`, `all`, and similar filler — are not used to narrow the
@@ -186,9 +190,10 @@ them in their own name, ranked below the full matches; if that is still too thin
 to any tool matching a single one of those words — so a phrase like `real-time response command`
 returns ranked candidates instead of nothing. The `hint` field describes the split, saying how many
 results matched every word and how many matched only some. A query whose every word is generic has
-narrowed nothing, so all of its results are reported as loose matches. The order is a keyword match
-with no view of intent, so read each candidate's description and its `read_only` / `destructive`
-flags and pick the one that fits, rather than taking the first row on trust.
+narrowed nothing, so all of its results are reported as loose matches. Keyword order has no view of
+intent, so read each candidate's description and its `read_only` / `destructive` flags and pick the
+one that fits, rather than taking the first row on trust. Semantic ranking, when enabled, reorders
+that shortlist and says so in `hint` and `ranking`.
 
 `module` ignores case and separators, so `hostgroups`, `host_groups`, and `Host-Groups` all select
 the same module. `falcon_list_enabled_tools` returns a `by_module` map whose keys are the exact
@@ -232,6 +237,50 @@ dispatches by name, so an agent can name a withheld tool, whereas in normal mode
 
 A tool from a module that was never enabled is not a filtered tool — it reports as unknown, since
 no rule withheld it.
+
+## Semantic Ranking
+
+Keyword search has no view of intent: `contain this host` and `list hosts` share the word `host`,
+and a mutator can tie its read-only sibling on a bare noun. Semantic ranking keeps that keyword
+step as candidate retrieval, then asks [TypeSafe](https://docs.typesafe.ai/)<!-- link:external -->
+System One (Jev) to judge the shortlist.
+
+Install the extra, set a TypeSafe API key, and enable it with dynamic mode:
+
+```bash
+pip install 'falcon-mcp[typesafe]'
+export TYPESAFE_API_KEY=your-typesafe-key
+falcon-mcp --dynamic --semantic-search
+```
+
+```bash
+export FALCON_MCP_DYNAMIC=true
+export FALCON_MCP_SEMANTIC_SEARCH=true
+export TYPESAFE_API_KEY=your-typesafe-key
+falcon-mcp
+```
+
+`--semantic-search` without `--dynamic`, without `TYPESAFE_API_KEY`, or without the extra, aborts
+startup. The key stays in the environment; it is never accepted as tool input or returned in search
+results.
+
+For each keyword shortlist (up to 30 tools), one TypeSafe request asks:
+
+- a **Score** per tool: how well this tool serves the request (wrong capability / related sibling /
+  the right tool)
+- a **Noul**: whether any listed tool actually does what was asked
+- a **Choice**: which single tool to try first, including `none`
+
+Code composes those answers. A low presence probability leaves keyword order untouched so a weak
+semantic signal cannot bury a lexical hit. Otherwise results sort by Score, read-only still wins
+ties, and the Choice winner is promoted only when its Score says it is at least related. Ranked
+entries include a `relevance` field (expected Score, 0–2) and the envelope's `ranking` field is
+`semantic` or `keyword`. An exact tool name, a `tool_names` schema lookup, an empty query, and a
+TypeSafe failure all skip reordering.
+
+The presence gate (0.30) and related-tool floor are starting points to evaluate on your own
+traffic, not properties of the model. `TYPESAFE_DEFAULT_MODEL` and `TYPESAFE_BASE_URL` are read by
+the SDK if you need to override them.
 
 ## When to Use Dynamic Mode
 

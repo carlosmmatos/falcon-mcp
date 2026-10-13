@@ -74,6 +74,8 @@ class FalconMCPServer:
         read_only: bool = False,
         allowed_tools: set[str] | None = None,
         excluded_tools: set[str] | None = None,
+        semantic_search: bool = False,
+        semantic_ranker: Any = None,
     ):
         """Initialize the Falcon MCP server.
 
@@ -94,9 +96,13 @@ class FalconMCPServer:
             read_only: Register only read-only tools, overriding allowed_tools
             allowed_tools: Additive allow-list of prefixed tool names.
             excluded_tools: Deny-list of prefixed tool names; wins over allowed_tools
+            semantic_search: Rank dynamic-mode search results with TypeSafe
+            semantic_ranker: Injected ranker; when set, skips env/SDK resolution
 
         Raises:
             ValueError: If allowed_tools or excluded_tools name unknown tools
+            ValueError: If semantic_search is enabled without dynamic mode, an API
+                key, or the TypeSafe extra
         """
         # Store configuration
         self.base_url = base_url
@@ -107,6 +113,11 @@ class FalconMCPServer:
         self.host = host
         self.port = port
         self.dynamic = dynamic
+        self._semantic_ranker = semantic_ranker
+        if self._semantic_ranker is None and semantic_search:
+            from falcon_mcp.semantic import resolve_semantic_ranker
+
+            self._semantic_ranker = resolve_semantic_ranker(dynamic=dynamic)
 
         allowed_tools = allowed_tools or set()
         excluded_tools = excluded_tools or set()
@@ -144,6 +155,8 @@ class FalconMCPServer:
         # Configure logging
         configure_logging(debug=self.debug)
         logger.info("Initializing Falcon MCP Server")
+        if self._semantic_ranker is not None:
+            logger.info("Dynamic mode semantic ranking enabled (TypeSafe)")
 
         # Initialize the Falcon client
         self.falcon_client = FalconClient(
@@ -230,16 +243,26 @@ class FalconMCPServer:
         """
         if not self.dynamic:
             return BASE_INSTRUCTIONS
+        search_order = (
+            "candidate tools ordered by how well each matches the request "
+            "(semantic ranking over a keyword shortlist). These entries carry each "
+            "tool's name, description, and read_only / destructive flags, but no "
+            "parameters. Read the descriptions and flags and pick the tool that fits."
+            if self._semantic_ranker is not None
+            else (
+                "candidate tools ordered by likely relevance. These entries carry each "
+                "tool's name, description, and read_only / destructive flags, but no "
+                "parameters. The order is a keyword match, not a judgement of intent, so "
+                "read the descriptions and flags and pick the tool that fits."
+            )
+        )
         return (
             f"{BASE_INSTRUCTIONS}\n\nThis server is running in dynamic mode: the "
             "Falcon tools are not individually registered, and are reached through "
             "three tools instead — falcon_search_tools and falcon_execute_tool for "
             "discovery, plus the always-on falcon_list_enabled_tools inventory.\n\n"
-            "1. falcon_search_tools with a keyword query, or a module name, lists "
-            "candidate tools ordered by likely relevance. These entries carry each "
-            "tool's name, description, and read_only / destructive flags, but no "
-            "parameters. The order is a keyword match, not a judgement of intent, so "
-            "read the descriptions and flags and pick the tool that fits.\n"
+            f"1. falcon_search_tools with a keyword query, or a module name, lists "
+            f"{search_order}\n"
             "2. falcon_search_tools again with tool_names=[chosen name] returns the "
             "full parameter schema for those tools, including filter syntax hints. "
             "Name more than one to compare candidates.\n"
@@ -310,7 +333,12 @@ class FalconMCPServer:
             # withheld tool is absent from search and 404s in the executor.
             from falcon_mcp.dynamic import DynamicMode
 
-            self._dynamic_mode = DynamicMode(self.modules, self.server, self.tool_policy)
+            self._dynamic_mode = DynamicMode(
+                self.modules,
+                self.server,
+                self.tool_policy,
+                ranker=self._semantic_ranker,
+            )
             self._dynamic_mode.register()
             self._resolution = self._dynamic_mode.catalog.resolution
         else:
@@ -646,6 +674,15 @@ def parse_args() -> argparse.Namespace:
         "instead of all module tools (env: FALCON_MCP_DYNAMIC)",
     )
 
+    parser.add_argument(
+        "--semantic-search",
+        action="store_true",
+        default=os.environ.get("FALCON_MCP_SEMANTIC_SEARCH", "").lower() == "true",
+        help="Rank dynamic-mode search results with TypeSafe (requires --dynamic and "
+        "TYPESAFE_API_KEY; install falcon-mcp[typesafe]) "
+        "(env: FALCON_MCP_SEMANTIC_SEARCH)",
+    )
+
     # Blast-radius controls. These compose with --modules and with each other;
     # --read-only and --exclude-tools both override --tools.
     parser.add_argument(
@@ -704,6 +741,7 @@ def main() -> None:
             read_only=args.read_only,
             allowed_tools=set(args.tools),
             excluded_tools=set(args.exclude_tools),
+            semantic_search=args.semantic_search,
         )
         logger.info("Starting server with %s transport", args.transport)
         server.run(args.transport)

@@ -82,6 +82,7 @@ falcon-mcp --help
 | `--member-cid` | `FALCON_MEMBER_CID` | — | Flight Control child CID |
 | `--proxy` | `FALCON_PROXY_URL` | — | HTTP/HTTPS proxy for outbound API connections |
 | `--dynamic` | `FALCON_MCP_DYNAMIC` | `false` | [Dynamic mode](/falcon-mcp/usage/dynamic-mode/): expose three tools (list-enabled-tools, search, execute) instead of all module tools to reduce context usage |
+| `--semantic-search` | `FALCON_MCP_SEMANTIC_SEARCH` | `false` | Rank dynamic-mode search results with TypeSafe. Requires `--dynamic`, `TYPESAFE_API_KEY`, and `falcon-mcp[typesafe]`. See [semantic ranking](/falcon-mcp/usage/dynamic-mode/#semantic-ranking) |
 | `--read-only` | `FALCON_MCP_READ_ONLY` | `false` | Register only read-only tools, disabling every tool that mutates tenant state |
 | `--tools` | `FALCON_MCP_TOOLS` | — | Comma-separated allow-list of tool names, added to the enabled modules |
 | `--exclude-tools` | `FALCON_MCP_EXCLUDE_TOOLS` | — | Comma-separated deny-list of tool names to withhold |
